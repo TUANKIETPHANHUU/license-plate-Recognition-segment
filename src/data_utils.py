@@ -54,7 +54,12 @@ def draw_labels_and_boxes(image, labels, boxes):
 
 def get_output_layers(model):
     layers_name = model.getLayerNames()
-    output_layers = [layers_name[i[0] - 1] for i in model.getUnconnectedOutLayers()]
+    try:
+        # Cập nhật cho OpenCV bản mới trên Streamlit Cloud
+        output_layers = [layers_name[i - 1] for i in model.getUnconnectedOutLayers()]
+    except Exception:
+        # Dự phòng cho OpenCV bản cũ nếu bạn chạy code dưới máy local
+        output_layers = [layers_name[i[0] - 1] for i in model.getUnconnectedOutLayers()]
 
     return output_layers
 
