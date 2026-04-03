@@ -3,11 +3,11 @@ import numpy as np
 from skimage import measure
 from imutils import perspective
 import imutils
+from skimage.filters import threshold_local
 
 from src.data_utils import order_points, convert2Square, draw_labels_and_boxes
 from src.lp_detection.detect import detectNumberPlate
 from src.char_classification.model import CNN_Model
-from skimage.filters import threshold_local
 
 ALPHA_DICT = {0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E', 5: 'F', 6: 'G', 7: 'H', 8: 'K', 9: 'L', 10: 'M', 11: 'N', 12: 'P',
               13: 'R', 14: 'S', 15: 'T', 16: 'U', 17: 'V', 18: 'X', 19: 'Y', 20: 'Z', 21: '0', 22: '1', 23: '2', 24: '3',
@@ -31,17 +31,26 @@ class E2E(object):
 
     def extractLP(self):
         coordinates = self.detectLP.detect(self.image)
-        if len(coordinates) == 0:
-            ValueError('No images detected')
+        
+        # SỬA LỖI 1: Xử lý an toàn khi YOLO không tìm thấy biển số
+        if coordinates is None or len(coordinates) == 0:
+            return  # Thoát êm xuôi thay vì để app sập
+
+        # SỬA LỖI 2 (CHÍNH): Fix lỗi "invalid index to scalar variable"
+        # Đảm bảo coordinates luôn là mảng 2D (danh sách các box) kể cả khi chỉ có 1 box
+        if isinstance(coordinates, np.ndarray) and coordinates.ndim == 1:
+            coordinates = [coordinates]
+        elif isinstance(coordinates, list) and len(coordinates) > 0 and isinstance(coordinates[0], (int, float, np.integer, np.floating)):
+            coordinates = [coordinates]
 
         for coordinate in coordinates:
             yield coordinate
 
     def predict(self, image):
-        # Input image or frame
-        self.image = image
+        # Input image or frame. Copy để tránh ghi đè làm hỏng luồng ảnh gốc.
+        self.image = image.copy()
 
-        for coordinate in self.extractLP():     # detect license plate by yolov3
+        for coordinate in self.extractLP():
             self.candidates = []
 
             # convert (x_min, y_min, width, height) to coordinate(top left, top right, bottom left, bottom right)
@@ -49,12 +58,20 @@ class E2E(object):
 
             # crop number plate used by bird's eyes view transformation
             LpRegion = perspective.four_point_transform(self.image, pts)
-           
+            
             # segmentation
             self.segmentation(LpRegion)
 
+            # SỬA LỖI 3: Nếu ảnh biển số mờ, không cắt được chữ nào thì bỏ qua để không bị crash
+            if len(self.candidates) == 0:
+                continue
+
             # recognize characters
             self.recognizeChar()
+
+            # Kiểm tra lại lần cuối sau khi lọc nhiễu background
+            if len(self.candidates) == 0:
+                continue
 
             # format and display license plate
             license_plate = self.format()
@@ -90,8 +107,9 @@ class E2E(object):
             mask = np.zeros(thresh.shape, dtype="uint8")
             mask[labels == label] = 255
 
-            # find contours from mask
-            _, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # SỬA LỖI 4: Tương thích với OpenCV trên Streamlit (chống lỗi ValueError)
+            contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours = imutils.grab_contours(contours)
 
             if len(contours) > 0:
                 contour = max(contours, key=cv2.contourArea)
@@ -111,6 +129,10 @@ class E2E(object):
                     self.candidates.append((square_candidate, (y, x)))
 
     def recognizeChar(self):
+        # Bảo vệ Keras model nếu mảng rỗng
+        if len(self.candidates) == 0:
+            return
+
         characters = []
         coordinates = []
 
