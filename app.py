@@ -29,7 +29,7 @@ page = st.sidebar.radio("Chọn trang:", ["Trang 1: Giới thiệu & EDA", "Tran
 # TRANG 1: GIỚI THIỆU & EDA
 # ---------------------------------------------------------
 if page == "Trang 1: Giới thiệu & EDA":
-    st.title("🛡️ Phát hiện và nhận dạng biển số xe Việt Nam từ hình ảnh bằng YOLOv8 nhằm tự động hóa bãi đỗ xe thông minh)")
+    st.title("🛡️ BÁO CÁO ĐỒ ÁN)")
     
     st.info("""
     - **Tên đề tài:** Phát hiện và nhận dạng biển số xe Việt Nam từ hình ảnh bằng YOLOv8 nhằm tự động hóa bãi đỗ xe thông minh
