@@ -30,7 +30,7 @@ st.sidebar.title("🛡️ ALPR Dashboard")
 st.sidebar.markdown("""
 **Sinh viên:** Phan Hữu Tuấn Kiệt  
 **MSSV:** 22T1020183  
-**Đề tài:** Nhận diện biển số xe thông minh  
+**Đề tài:** Phát hiện và nhận dạng biển số xe Việt Nam từ hình ảnh bằng YOLOv8 nhằm tự động hóa bãi đỗ xe thông minh 
 """)
 st.sidebar.divider()
 page = st.sidebar.radio(
