@@ -22,6 +22,7 @@ LP_DETECTION_CFG = {
 
 CHAR_CLASSIFICATION_WEIGHTS = './src/weights/weight.h5'
 
+
 class E2E(object):
     def __init__(self):
         self.image = np.empty((28, 28, 1))
@@ -67,11 +68,9 @@ class E2E(object):
         thresh = (V > T).astype("uint8") * 255
         thresh = cv2.bitwise_not(thresh)
         
-        # Resize ảnh về width 400
+        # Resize ảnh về width 400 và tính toán chiều cao sau resize
         thresh = imutils.resize(thresh, width=400)
         thresh = cv2.medianBlur(thresh, 5)
-
-        # FIX LỖI SCALE: Lấy chiều cao chuẩn của ảnh sau khi resize
         thresh_height = thresh.shape[0]
 
         # Tìm các vùng liên thông (Ký tự)
@@ -91,19 +90,15 @@ class E2E(object):
 
                 aspectRatio = w / float(h)
                 solidity = cv2.contourArea(contour) / float(w * h)
-                
-                # SỬA LỖI: Chia cho thresh_height thay vì LpRegion.shape[0]
                 heightRatio = h / float(thresh_height)
 
-                # BỘ LỌC CỰC MẠNH: 
-                # heightRatio > 0.25: Đảm bảo xóa sạch ốc vít, gạch ngang, dấu chấm.
-                # aspectRatio < 0.9: Xóa các nét xước ngang.
+                # BỘ LỌC HÌNH HỌC (Đã fix lỗi tỷ lệ và siết chặt)
                 if 0.15 < aspectRatio < 0.9 and solidity > 0.2 and 0.25 < heightRatio < 0.95:
                     candidate = np.array(mask[y:y + h, x:x + w])
                     square_candidate = convert2Square(candidate)
                     square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
                     square_candidate = square_candidate.reshape((28, 28, 1))
-                    # Lưu (ảnh chữ số, (tọa độ y, tọa độ x))
+                    
                     self.candidates.append((square_candidate, (y, x)))
 
     def recognizeChar(self):
@@ -113,12 +108,21 @@ class E2E(object):
         coordinates = [c[1] for c in self.candidates]
 
         characters = np.array(characters)
+        
+        # CNN dự đoán
         result = self.recogChar.predict_on_batch(characters)
         result_idx = np.argmax(result, axis=1)
+        confidences = np.max(result, axis=1) 
 
         self.candidates = []
         for i in range(len(result_idx)):
             if result_idx[i] == 31: continue # Bỏ qua background
+            
+            # BỘ LỌC CONFIDENCE: Dưới 75% tin cậy -> Bỏ qua (Xóa ốc vít, viền rác)
+            if confidences[i] < 0.75:
+                print(f"[INFO] Đã lọc nhiễu: {ALPHA_DICT[result_idx[i]]} - Tự tin: {confidences[i]:.2f}")
+                continue
+
             self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
 
     def format(self):
@@ -147,13 +151,11 @@ class E2E(object):
         first_line.sort(key=lambda item: item[1])
         second_line.sort(key=lambda item: item[1])
 
-        # HÀM XÓA BÓNG MA (Double Detection)
+        # Xóa bóng ma lặp chữ (Khoảng cách X > 25)
         def clean_line(line):
             if not line: return []
             res = [line[0]]
             for i in range(1, len(line)):
-                # Do ảnh đã resize lên 400, khoảng cách 2 chữ liền kề thường rất lớn (>40px)
-                # Tăng giới hạn lên 25 để xóa dứt điểm các bóng ma đọc trùng nhau
                 if abs(line[i][1] - res[-1][1]) > 25: 
                     res.append(line[i])
             return res
@@ -161,7 +163,7 @@ class E2E(object):
         first_line = clean_line(first_line)
         second_line = clean_line(second_line)
 
-        # Ghép kết quả thành chuỗi
+        # Ghép chuỗi
         str_1 = "".join([c[0] for c in first_line])
         str_2 = "".join([c[0] for c in second_line])
 
