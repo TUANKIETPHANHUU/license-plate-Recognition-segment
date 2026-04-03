@@ -45,7 +45,7 @@ page = st.sidebar.radio(
 # ---------------------------------------------------------
 if page == "1. Giới thiệu & Khám phá dữ liệu (EDA)":
     st.title("🛡️ BÁO CÁO ĐỒ ÁN ")
-    st.header("Phát hiện và nhận dạng biển số xe Việt Nam từ hình ảnh bằng YOLOv8 nhằm tự động hóa bãi đỗ xe thông minh")
+ 
     
     st.info("""
     **Mô tả giá trị thực tiễn:** Giải pháp giúp tự động hóa quá trình ghi nhận phương tiện ra vào tại các trạm thu phí, bãi đỗ xe thông minh, khu chung cư. Qua đó giảm thiểu rủi ro sai sót do con người gây ra, tăng tốc độ xử lý và hỗ trợ trích xuất dữ liệu phục vụ công tác quản lý và đảm bảo an ninh khi cần thiết.
