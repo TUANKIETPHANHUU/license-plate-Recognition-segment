@@ -32,133 +32,121 @@ class E2E(object):
     def extractLP(self):
         coordinates = self.detectLP.detect(self.image)
         if len(coordinates) == 0:
-            return 
+            ValueError('No images detected')
+
         for coordinate in coordinates:
             yield coordinate
 
     def predict(self, image):
+        # Input image or frame
         self.image = image
-        for coordinate in self.extractLP():
+
+        for coordinate in self.extractLP():     # detect license plate by yolov3
             self.candidates = []
+
+            # convert (x_min, y_min, width, height) to coordinate(top left, top right, bottom left, bottom right)
             pts = order_points(coordinate)
+
+            # crop number plate used by bird's eyes view transformation
             LpRegion = perspective.four_point_transform(self.image, pts)
+           
+            # segmentation
             self.segmentation(LpRegion)
+
+            # recognize characters
             self.recognizeChar()
+
+            # format and display license plate
             license_plate = self.format()
+
+            # draw labels
             self.image = draw_labels_and_boxes(self.image, license_plate, coordinate)
+
         return self.image
 
     def segmentation(self, LpRegion):
-        # Đồng bộ ảnh lên width=400px để các chỉ số phía sau chuẩn xác
-        LpRegion = imutils.resize(LpRegion, width=400)
-        img_h, img_w = LpRegion.shape[:2]
-        
+        # apply thresh to extracted licences plate
         V = cv2.split(cv2.cvtColor(LpRegion, cv2.COLOR_BGR2HSV))[2]
+
+        # adaptive threshold
         T = threshold_local(V, 15, offset=10, method="gaussian")
         thresh = (V > T).astype("uint8") * 255
+
+        # convert black pixel of digits to white pixel
         thresh = cv2.bitwise_not(thresh)
+        thresh = imutils.resize(thresh, width=400)
         thresh = cv2.medianBlur(thresh, 5)
 
-        # Xóa viền đen sát mép ảnh (Khắc phục lỗi nhận khung inox ra số 1-1)
-        cv2.rectangle(thresh, (0, 0), (img_w - 1, img_h - 1), 0, 3)
-
+        # connected components analysis
         labels = measure.label(thresh, connectivity=2, background=0)
-        char_candidates = []
 
+        # loop over the unique components
         for label in np.unique(labels):
-            if label == 0: continue
-            
+            # if this is background label, ignore it
+            if label == 0:
+                continue
+
+            # init mask to store the location of the character candidates
             mask = np.zeros(thresh.shape, dtype="uint8")
             mask[labels == label] = 255
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
+
+            # find contours from mask
+            _, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             if len(contours) > 0:
                 contour = max(contours, key=cv2.contourArea)
-                x, y, w, h = cv2.boundingRect(contour)
+                (x, y, w, h) = cv2.boundingRect(contour)
 
+                # rule to determine characters
                 aspectRatio = w / float(h)
                 solidity = cv2.contourArea(contour) / float(w * h)
-                heightRatio = h / float(img_h)
+                heightRatio = h / float(LpRegion.shape[0])
 
-                # Nới lỏng điều kiện chiều cao (0.2 -> 0.95) để cứu biển ô tô (Unknown)
-                # Siết chặt aspectRatio để loại bỏ vết xước ngang/dọc
-                if 0.1 < aspectRatio < 1.0 and solidity > 0.15 and 0.2 < heightRatio < 0.95 and h > 20:
+                if 0.1 < aspectRatio < 1.0 and solidity > 0.1 and 0.35 < heightRatio < 2.0:
+                    # extract characters
                     candidate = np.array(mask[y:y + h, x:x + w])
                     square_candidate = convert2Square(candidate)
                     square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
                     square_candidate = square_candidate.reshape((28, 28, 1))
-                    
-                    # LƯU TRỮ DẠNG DICTIONARY ĐỂ XỬ LÝ THÔNG MINH HƠN
-                    char_candidates.append({
-                        'img': square_candidate,
-                        'x': x, 'y': y, 'w': w, 'h': h
-                    })
-        self.candidates = char_candidates
+                    self.candidates.append((square_candidate, (y, x)))
 
     def recognizeChar(self):
-        if not self.candidates: return
+        characters = []
+        coordinates = []
 
-        characters = np.array([c['img'] for c in self.candidates])
+        for char, coordinate in self.candidates:
+            characters.append(char)
+            coordinates.append(coordinate)
+
+        characters = np.array(characters)
         result = self.recogChar.predict_on_batch(characters)
-        
         result_idx = np.argmax(result, axis=1)
-        confidences = np.max(result, axis=1)
 
-        valid_candidates = []
+        self.candidates = []
         for i in range(len(result_idx)):
-            # SIẾT CHẶT ĐỘ TỰ TIN LÊN 80% (0.80): Diệt sạch chữ E, U, Z, K sinh ra từ rác
-            if result_idx[i] == 31 or confidences[i] < 0.80:
+            if result_idx[i] == 31:    # if is background or noise, ignore it
                 continue
-            
-            c = self.candidates[i]
-            c['char'] = ALPHA_DICT[result_idx[i]]
-            c['conf'] = confidences[i]
-            valid_candidates.append(c)
-
-        self.candidates = valid_candidates
+            self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
 
     def format(self):
-        if not self.candidates: return "Unknown"
-
-        # Phân chia 2 dòng động (An toàn tuyệt đối cho cả ô tô và xe máy)
-        y_coords = [c['y'] for c in self.candidates]
-        base_y = min(y_coords)
-        y_threshold = base_y + 40 # Mốc 40px là lý tưởng cho ảnh đã resize 400px
-
         first_line = []
         second_line = []
-        for c in self.candidates:
-            if c['y'] < y_threshold:
-                first_line.append(c)
+
+        for candidate, coordinate in self.candidates:
+            if self.candidates[0][1][0] + 40 > coordinate[0]:
+                first_line.append((candidate, coordinate[1]))
             else:
-                second_line.append(c)
+                second_line.append((candidate, coordinate[1]))
 
-        # THUẬT TOÁN NMS CHỐNG NHÂN BẢN KÝ TỰ (Chữa lỗi X4 -> X74, 2122 -> 2412122)
-        def clean_line(line):
-            if not line: return []
-            # Sắp xếp từ trái qua phải theo tọa độ X
-            line = sorted(line, key=lambda c: c['x'])
-            res = []
-            for current in line:
-                if not res:
-                    res.append(current)
-                else:
-                    prev = res[-1]
-                    # KHI 2 KÝ TỰ DÍNH VÀO NHAU (Giao thoa > 50% chiều rộng)
-                    if current['x'] < prev['x'] + prev['w'] * 0.5:
-                        # CHỈ GIỮ LẠI KÝ TỰ CÓ ĐỘ TỰ TIN TỪ CNN CAO HƠN
-                        if current['conf'] > prev['conf']:
-                            res[-1] = current
-                    else:
-                        res.append(current)
-            return res
+        def take_second(s):
+            return s[1]
 
-        first_line = clean_line(first_line)
-        second_line = clean_line(second_line)
+        first_line = sorted(first_line, key=take_second)
+        second_line = sorted(second_line, key=take_second)
 
-        str_1 = "".join([c['char'] for c in first_line])
-        str_2 = "".join([c['char'] for c in second_line])
+        if len(second_line) == 0:  # if license plate has 1 line
+            license_plate = "".join([str(ele[0]) for ele in first_line])
+        else:   # if license plate has 2 lines
+            license_plate = "".join([str(ele[0]) for ele in first_line]) + "-" + "".join([str(ele[0]) for ele in second_line])
 
-        if not second_line:
-            return str_1 # Ô tô 1 dòng
-        return f"{str_1}-{str_2}" # Xe máy 2 dòng
+        return license_plate
