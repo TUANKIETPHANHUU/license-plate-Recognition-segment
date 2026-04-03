@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import time
 
 # Import class E2E từ project của bạn
+# Lưu ý: Đảm bảo thư mục 'src' có file '__init__.py' và nằm cùng cấp với file app.py
 from src.lp_recognition import E2E
 
 # --- CẤU HÌNH TRANG ---
@@ -99,6 +100,10 @@ elif page == "2. Triển khai mô hình":
                 try:
                     # Tiền xử lý: Chuyển PIL Image sang Numpy Array (OpenCV format)
                     img_array = np.array(image_pil)
+                    # Xử lý trường hợp ảnh có kênh alpha (RGBA) chuyển về RGB trước khi sang BGR
+                    if img_array.shape[-1] == 4:
+                        img_array = cv2.cvtColor(img_array, cv2.COLOR_RGBA2RGB)
+                    
                     # OpenCV dùng BGR, Streamlit dùng RGB -> Cần chuyển đổi
                     img_cv2 = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
 
@@ -156,7 +161,7 @@ elif page == "3. Đánh giá & Hiệu năng":
     with col_chart2:
         st.markdown("**Confusion Matrix (Nhận diện ký tự)**")
         # Bạn nên dùng st.image() để load ảnh ma trận nhầm lẫn thực tế đã lưu
-        st.info("📌 Vui lòng thay thế phần này bằng hình ảnh Confusion Matrix trích xuất từ file `train_file.ipynb` của bạn.")
+        st.info("📌 Vui lòng thay thế phần này bằng hình ảnh Confusion Matrix trích xuất từ quá trình huấn luyện của bạn.")
         # VD: st.image("./samples/confusion_matrix.png")
         
     st.divider()
