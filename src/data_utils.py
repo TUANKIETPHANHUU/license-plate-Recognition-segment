@@ -54,13 +54,7 @@ def draw_labels_and_boxes(image, labels, boxes):
 
 def get_output_layers(model):
     layers_name = model.getLayerNames()
-    out_layers = model.getUnconnectedOutLayers()
-    
-    # "Nghiền phẳng" mọi loại mảng (1 chiều hay 2 chiều) về một danh sách các con số
-    out_layers_flat = np.array(out_layers).flatten()
-    
-    # Dùng int(i) để ép kiểu, đảm bảo không bao giờ bị lỗi 'scalar variable' nữa
-    output_layers = [layers_name[int(i) - 1] for i in out_layers_flat]
+    output_layers = [layers_name[i[0] - 1] for i in model.getUnconnectedOutLayers()]
 
     return output_layers
 
@@ -80,7 +74,7 @@ def order_points(coordinates):
 
 def convert2Square(image):
     """
-    Resize non square image(height != width) to square one (height == width)
+    Resize non square image(height != width to square one (height == width)
     :param image: input images
     :return: numpy array
     """
