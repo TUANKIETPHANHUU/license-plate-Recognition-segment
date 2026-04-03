@@ -32,68 +32,78 @@ class E2E(object):
     def extractLP(self):
         coordinates = self.detectLP.detect(self.image)
         if len(coordinates) == 0:
-            return 
-        
+            ValueError('No images detected')
+
         for coordinate in coordinates:
             yield coordinate
 
     def predict(self, image):
+        # Input image or frame
         self.image = image
 
-        for coordinate in self.extractLP():
+        for coordinate in self.extractLP():     # detect license plate by yolov3
             self.candidates = []
+
+            # convert (x_min, y_min, width, height) to coordinate(top left, top right, bottom left, bottom right)
             pts = order_points(coordinate)
 
-            # Crop và xoay thẳng biển số
+            # crop number plate used by bird's eyes view transformation
             LpRegion = perspective.four_point_transform(self.image, pts)
-            
-            # Phân đoạn ký tự
+           
+            # segmentation
             self.segmentation(LpRegion)
 
-            # Nhận diện từng ký tự
+            # recognize characters
             self.recognizeChar()
 
-            # Định dạng lại chuỗi biển số
+            # format and display license plate
             license_plate = self.format()
 
-            # Vẽ kết quả lên ảnh gốc
+            # draw labels
             self.image = draw_labels_and_boxes(self.image, license_plate, coordinate)
 
         return self.image
 
     def segmentation(self, LpRegion):
-        # Đồng bộ tỷ lệ khung hình (Khắc phục lỗi Unknown ở xe ô tô)
-        LpRegion = imutils.resize(LpRegion, width=400)
-        
+        # apply thresh to extracted licences plate
         V = cv2.split(cv2.cvtColor(LpRegion, cv2.COLOR_BGR2HSV))[2]
+
+        # adaptive threshold
         T = threshold_local(V, 15, offset=10, method="gaussian")
         thresh = (V > T).astype("uint8") * 255
 
+        # convert black pixel of digits to white pixel
         thresh = cv2.bitwise_not(thresh)
+        thresh = imutils.resize(thresh, width=400)
         thresh = cv2.medianBlur(thresh, 5)
 
+        # connected components analysis
         labels = measure.label(thresh, connectivity=2, background=0)
 
+        # loop over the unique components
         for label in np.unique(labels):
+            # if this is background label, ignore it
             if label == 0:
                 continue
 
+            # init mask to store the location of the character candidates
             mask = np.zeros(thresh.shape, dtype="uint8")
             mask[labels == label] = 255
 
-            # RETR_EXTERNAL: Chỉ lấy viền ngoài cùng, bỏ qua lỗ hổng bên trong các số 0, 4, 8...
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
+            # find contours from mask
+            _, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             if len(contours) > 0:
                 contour = max(contours, key=cv2.contourArea)
                 (x, y, w, h) = cv2.boundingRect(contour)
 
+                # rule to determine characters
                 aspectRatio = w / float(h)
                 solidity = cv2.contourArea(contour) / float(w * h)
                 heightRatio = h / float(LpRegion.shape[0])
 
-                # Điều kiện khắt khe hơn: heightRatio > 0.35 (Lọc sạch ốc vít, dấu chấm, dấu gạch ngang)
-                if 0.15 < aspectRatio < 0.9 and solidity > 0.1 and 0.35 < heightRatio < 0.9:
+                if 0.1 < aspectRatio < 1.0 and solidity > 0.1 and 0.35 < heightRatio < 2.0:
+                    # extract characters
                     candidate = np.array(mask[y:y + h, x:x + w])
                     square_candidate = convert2Square(candidate)
                     square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
@@ -101,9 +111,6 @@ class E2E(object):
                     self.candidates.append((square_candidate, (y, x)))
 
     def recognizeChar(self):
-        if len(self.candidates) == 0:
-            return
-
         characters = []
         coordinates = []
 
@@ -113,28 +120,20 @@ class E2E(object):
 
         characters = np.array(characters)
         result = self.recogChar.predict_on_batch(characters)
-        
         result_idx = np.argmax(result, axis=1)
-        confidences = np.max(result, axis=1) 
 
         self.candidates = []
         for i in range(len(result_idx)):
-            # Lọc bỏ rác: class 31 hoặc độ tự tin dưới 75% (Khắc phục lỗi phán bừa ra E, U)
-            if result_idx[i] == 31 or confidences[i] < 0.75: 
+            if result_idx[i] == 31:    # if is background or noise, ignore it
                 continue
             self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
 
     def format(self):
-        if len(self.candidates) == 0:
-            return "Unknown"
-
         first_line = []
         second_line = []
 
-        base_y = self.candidates[0][1][0]
-
         for candidate, coordinate in self.candidates:
-            if base_y + 40 > coordinate[0]:
+            if self.candidates[0][1][0] + 40 > coordinate[0]:
                 first_line.append((candidate, coordinate[1]))
             else:
                 second_line.append((candidate, coordinate[1]))
@@ -142,24 +141,12 @@ class E2E(object):
         def take_second(s):
             return s[1]
 
-        # Bộ lọc Non-Maximum Suppression tự chế (Chống lặp ký tự)
-        def filter_duplicates(line):
-            if not line:
-                return []
-            line = sorted(line, key=take_second)
-            res = [line[0]]
-            for i in range(1, len(line)):
-                # Khoảng cách tối thiểu 30 pixel để tránh dính chữ bị vỡ nét
-                if abs(line[i][1] - res[-1][1]) > 30:
-                    res.append(line[i])
-            return res
+        first_line = sorted(first_line, key=take_second)
+        second_line = sorted(second_line, key=take_second)
 
-        first_line = filter_duplicates(first_line)
-        second_line = filter_duplicates(second_line)
-
-        if len(second_line) == 0:
+        if len(second_line) == 0:  # if license plate has 1 line
             license_plate = "".join([str(ele[0]) for ele in first_line])
-        else:
+        else:   # if license plate has 2 lines
             license_plate = "".join([str(ele[0]) for ele in first_line]) + "-" + "".join([str(ele[0]) for ele in second_line])
 
         return license_plate
