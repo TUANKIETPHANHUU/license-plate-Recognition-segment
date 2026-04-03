@@ -8,3 +8,4 @@ Pillow
 opencv-python-headless
 scikit-image
 imutils
+tensorflow-cpu
