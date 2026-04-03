@@ -22,7 +22,6 @@ LP_DETECTION_CFG = {
 
 CHAR_CLASSIFICATION_WEIGHTS = './src/weights/weight.h5'
 
-
 class E2E(object):
     def __init__(self):
         self.image = np.empty((28, 28, 1))
@@ -62,19 +61,23 @@ class E2E(object):
         return self.image
 
     def segmentation(self, LpRegion):
+        # 1. TỐI ƯU: Phóng to ảnh lên 400px NGAY TỪ ĐẦU để đồng bộ kích thước nét chữ
+        LpRegion = imutils.resize(LpRegion, width=400)
+        
         # Tiền xử lý ảnh để làm nổi bật ký tự
         V = cv2.split(cv2.cvtColor(LpRegion, cv2.COLOR_BGR2HSV))[2]
-        T = threshold_local(V, 15, offset=10, method="gaussian")
+        
+        # 2. CHỐNG VỠ NÉT: Tăng block_size lên 85 (Vì ảnh đã to 400px)
+        T = threshold_local(V, 85, offset=10, method="gaussian")
         thresh = (V > T).astype("uint8") * 255
         thresh = cv2.bitwise_not(thresh)
-        
-        # Resize ảnh về width 400 và tính toán chiều cao sau resize
-        thresh = imutils.resize(thresh, width=400)
         thresh = cv2.medianBlur(thresh, 5)
+
         thresh_height = thresh.shape[0]
 
         # Tìm các vùng liên thông (Ký tự)
         labels = measure.label(thresh, connectivity=2, background=0)
+        raw_candidates = []
 
         for label in np.unique(labels):
             if label == 0: continue
@@ -92,14 +95,31 @@ class E2E(object):
                 solidity = cv2.contourArea(contour) / float(w * h)
                 heightRatio = h / float(thresh_height)
 
-                # BỘ LỌC HÌNH HỌC (Đã fix lỗi tỷ lệ và siết chặt)
+                # BỘ LỌC HÌNH HỌC (Siết chặt)
                 if 0.15 < aspectRatio < 0.9 and solidity > 0.2 and 0.25 < heightRatio < 0.95:
-                    candidate = np.array(mask[y:y + h, x:x + w])
-                    square_candidate = convert2Square(candidate)
-                    square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
-                    square_candidate = square_candidate.reshape((28, 28, 1))
-                    
-                    self.candidates.append((square_candidate, (y, x)))
+                    raw_candidates.append((x, y, w, h, mask))
+        
+        # 3. LỌC BÓNG MA NÂNG CAO (Xóa khung nhỏ bị nuốt chửng bởi khung lớn)
+        filtered_candidates = []
+        for i, (x1, y1, w1, h1, mask1) in enumerate(raw_candidates):
+            is_valid = True
+            for j, (x2, y2, w2, h2, mask2) in enumerate(raw_candidates):
+                if i != j:
+                    # Kiểm tra xem khung 1 có nằm lọt thỏm trong khung 2 không
+                    if x1 >= x2 and (x1 + w1) <= (x2 + w2) and y1 >= y2 and (y1 + h1) <= (y2 + h2):
+                        is_valid = False
+                        break
+            if is_valid:
+                filtered_candidates.append((x1, y1, w1, h1, mask1))
+
+        # 4. Đóng gói kết quả cuối cùng chuyển cho CNN
+        for (x, y, w, h, mask) in filtered_candidates:
+            candidate = np.array(mask[y:y + h, x:x + w])
+            square_candidate = convert2Square(candidate)
+            square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
+            square_candidate = square_candidate.reshape((28, 28, 1))
+            
+            self.candidates.append((square_candidate, (y, x)))
 
     def recognizeChar(self):
         if len(self.candidates) == 0: return
@@ -118,9 +138,9 @@ class E2E(object):
         for i in range(len(result_idx)):
             if result_idx[i] == 31: continue # Bỏ qua background
             
-            # BỘ LỌC CONFIDENCE: Dưới 75% tin cậy -> Bỏ qua (Xóa ốc vít, viền rác)
+            # BỘ LỌC ĐỘ TỰ TIN: Dưới 75% tin cậy -> Bỏ qua
             if confidences[i] < 0.75:
-                print(f"[INFO] Đã lọc nhiễu: {ALPHA_DICT[result_idx[i]]} - Tự tin: {confidences[i]:.2f}")
+                print(f"[INFO] Lọc nhiễu bởi CNN: {ALPHA_DICT[result_idx[i]]} - Tự tin: {confidences[i]:.2f}")
                 continue
 
             self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
