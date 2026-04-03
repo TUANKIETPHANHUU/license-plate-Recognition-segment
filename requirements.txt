@@ -8,3 +8,4 @@ keras==2.15.0
 scikit-image
 imutils
 protobuf==3.20.3
+seaborn
