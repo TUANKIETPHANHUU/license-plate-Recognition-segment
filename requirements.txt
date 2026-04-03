@@ -1,9 +1,8 @@
 streamlit
 opencv-python-headless
-numpy
+numpy==1.26.4
+tensorflow-cpu==2.15.0
 imutils
 scikit-image
 scikit-learn
-matplotlib
-pandas
 pillow
