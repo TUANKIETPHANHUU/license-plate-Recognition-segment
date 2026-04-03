@@ -32,7 +32,7 @@ class E2E(object):
     def extractLP(self):
         coordinates = self.detectLP.detect(self.image)
         if len(coordinates) == 0:
-            return # Trả về trống thay vì báo lỗi dừng chương trình
+            return 
         
         for coordinate in coordinates:
             yield coordinate
@@ -62,18 +62,16 @@ class E2E(object):
         return self.image
 
     def segmentation(self, LpRegion):
-        # Chuyển hệ màu HSV để lấy kênh V (độ sáng) giúp tách biển số tốt hơn
+        # CÁCH CHỮA BỆNH UNKNOWN Ô TÔ: Resize ảnh GỐC ngay từ đầu để đồng bộ tỷ lệ H/W
+        LpRegion = imutils.resize(LpRegion, width=400)
+        
         V = cv2.split(cv2.cvtColor(LpRegion, cv2.COLOR_BGR2HSV))[2]
-
-        # Áp dụng threshold thích nghi (adaptive threshold)
         T = threshold_local(V, 15, offset=10, method="gaussian")
         thresh = (V > T).astype("uint8") * 255
 
         thresh = cv2.bitwise_not(thresh)
-        thresh = imutils.resize(thresh, width=400)
         thresh = cv2.medianBlur(thresh, 5)
 
-        # Phân tích các thành phần liên thông
         labels = measure.label(thresh, connectivity=2, background=0)
 
         for label in np.unique(labels):
@@ -83,7 +81,7 @@ class E2E(object):
             mask = np.zeros(thresh.shape, dtype="uint8")
             mask[labels == label] = 255
 
-            # Sửa lỗi "not enough values to unpack" bằng cách lấy 2 giá trị cuối của tuple trả về
+            # CÁCH CHỮA BỆNH LẶP CHỮ: Dùng cv2.RETR_EXTERNAL để CHỈ LẤY VIỀN NGOÀI, bỏ qua viền tam giác bên trong các số 4, 8, 0...
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
 
             if len(contours) > 0:
@@ -94,8 +92,8 @@ class E2E(object):
                 solidity = cv2.contourArea(contour) / float(w * h)
                 heightRatio = h / float(LpRegion.shape[0])
 
-                # Các quy tắc lọc để xác định đâu là ký tự thật sự
-                if 0.1 < aspectRatio < 1.0 and solidity > 0.1 and 0.1 < heightRatio < 2.0:
+                # Thu hẹp điều kiện để lọc rác tốt hơn
+                if 0.15 < aspectRatio < 0.9 and solidity > 0.1 and 0.2 < heightRatio < 0.9:
                     candidate = np.array(mask[y:y + h, x:x + w])
                     square_candidate = convert2Square(candidate)
                     square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
@@ -114,13 +112,16 @@ class E2E(object):
             coordinates.append(coordinate)
 
         characters = np.array(characters)
-        # Dự đoán đồng thời toàn bộ ký tự trong biển số
         result = self.recogChar.predict_on_batch(characters)
+        
         result_idx = np.argmax(result, axis=1)
+        # CÁCH CHỮA BỆNH CHỮ LẠ (E, U...): Lấy độ tự tin (confidence)
+        confidences = np.max(result, axis=1) 
 
         self.candidates = []
         for i in range(len(result_idx)):
-            if result_idx[i] == 31: # Bỏ qua nếu là background
+            # NẾU LÀ BACKGROUND HOẶC ĐỘ TỰ TIN DƯỚI 75% -> LÀ RÁC -> BỎ QUA
+            if result_idx[i] == 31 or confidences[i] < 0.75: 
                 continue
             self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
 
@@ -131,8 +132,6 @@ class E2E(object):
         first_line = []
         second_line = []
 
-        # Sắp xếp các ký tự theo dòng (biển số Việt Nam thường có 1 hoặc 2 dòng)
-        # Lấy mốc dòng đầu tiên từ ký tự đầu tiên tìm thấy
         base_y = self.candidates[0][1][0]
 
         for candidate, coordinate in self.candidates:
@@ -144,8 +143,20 @@ class E2E(object):
         def take_second(s):
             return s[1]
 
-        first_line = sorted(first_line, key=take_second)
-        second_line = sorted(second_line, key=take_second)
+        # Hàm lọc trùng lặp tọa độ X (NMS tự chế)
+        def filter_duplicates(line):
+            if not line:
+                return []
+            line = sorted(line, key=take_second)
+            res = [line[0]]
+            for i in range(1, len(line)):
+                # Nếu khoảng cách giữa 2 chữ cái gần nhau quá (< 15 pixel) thì tính là trùng -> Bỏ qua
+                if abs(line[i][1] - res[-1][1]) > 15:
+                    res.append(line[i])
+            return res
+
+        first_line = filter_duplicates(first_line)
+        second_line = filter_duplicates(second_line)
 
         if len(second_line) == 0:
             license_plate = "".join([str(ele[0]) for ele in first_line])
@@ -153,4 +164,3 @@ class E2E(object):
             license_plate = "".join([str(ele[0]) for ele in first_line]) + "-" + "".join([str(ele[0]) for ele in second_line])
 
         return license_plate
-		
