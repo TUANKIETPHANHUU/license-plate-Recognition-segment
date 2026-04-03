@@ -3,7 +3,8 @@ opencv-python-headless
 numpy==1.23.5
 pandas
 matplotlib
-tensorflow
+tensorflow==2.15.0
+keras==2.15.0
 scikit-image
 imutils
 protobuf==3.20.3
