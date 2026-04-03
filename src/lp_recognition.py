@@ -9,6 +9,7 @@ from src.lp_detection.detect import detectNumberPlate
 from src.char_classification.model import CNN_Model
 from skimage.filters import threshold_local
 
+# Từ điển ánh xạ kết quả dự đoán từ CNN
 ALPHA_DICT = {0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E', 5: 'F', 6: 'G', 7: 'H', 8: 'K', 9: 'L', 10: 'M', 11: 'N', 12: 'P',
               13: 'R', 14: 'S', 15: 'T', 16: 'U', 17: 'V', 18: 'X', 19: 'Y', 20: 'Z', 21: '0', 22: '1', 23: '2', 24: '3',
               25: '4', 26: '5', 27: '6', 28: '7', 29: '8', 30: '9', 31: "Background"}
@@ -32,58 +33,51 @@ class E2E(object):
     def extractLP(self):
         coordinates = self.detectLP.detect(self.image)
         if len(coordinates) == 0:
-            return # Trả về trống thay vì báo lỗi dừng chương trình
-        
+            return 
         for coordinate in coordinates:
             yield coordinate
 
     def predict(self, image):
         self.image = image
-
         for coordinate in self.extractLP():
             self.candidates = []
             pts = order_points(coordinate)
 
-            # Crop và xoay thẳng biển số
+            # Bước 1: Cắt và xoay thẳng vùng biển số
             LpRegion = perspective.four_point_transform(self.image, pts)
             
-            # Phân đoạn ký tự
+            # Bước 2: Phân đoạn (Segmentation) tách từng chữ cái
             self.segmentation(LpRegion)
 
-            # Nhận diện từng ký tự
+            # Bước 3: Nhận dạng (OCR) bằng CNN
             self.recognizeChar()
 
-            # Định dạng lại chuỗi biển số
+            # Bước 4: Sắp xếp và định dạng chuỗi (Quan trọng cho xe máy 2 dòng)
             license_plate = self.format()
 
-            # Vẽ kết quả lên ảnh gốc
+            # Bước 5: Vẽ khung và kết quả lên ảnh gốc
             self.image = draw_labels_and_boxes(self.image, license_plate, coordinate)
 
         return self.image
 
     def segmentation(self, LpRegion):
-        # Chuyển hệ màu HSV để lấy kênh V (độ sáng) giúp tách biển số tốt hơn
+        # Tiền xử lý ảnh để làm nổi bật ký tự
         V = cv2.split(cv2.cvtColor(LpRegion, cv2.COLOR_BGR2HSV))[2]
-
-        # Áp dụng threshold thích nghi (adaptive threshold)
         T = threshold_local(V, 15, offset=10, method="gaussian")
         thresh = (V > T).astype("uint8") * 255
-
         thresh = cv2.bitwise_not(thresh)
         thresh = imutils.resize(thresh, width=400)
         thresh = cv2.medianBlur(thresh, 5)
 
-        # Phân tích các thành phần liên thông
+        # Tìm các vùng liên thông (Ký tự)
         labels = measure.label(thresh, connectivity=2, background=0)
 
         for label in np.unique(labels):
-            if label == 0:
-                continue
+            if label == 0: continue
 
             mask = np.zeros(thresh.shape, dtype="uint8")
             mask[labels == label] = 255
 
-            # Sửa lỗi "not enough values to unpack" bằng cách lấy 2 giá trị cuối của tuple trả về
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
 
             if len(contours) > 0:
@@ -94,62 +88,78 @@ class E2E(object):
                 solidity = cv2.contourArea(contour) / float(w * h)
                 heightRatio = h / float(LpRegion.shape[0])
 
-                # Các quy tắc lọc để xác định đâu là ký tự thật sự
+                # Bộ lọc hình học để loại bỏ nhiễu không phải là chữ số
                 if 0.1 < aspectRatio < 1.0 and solidity > 0.1 and 0.1 < heightRatio < 2.0:
                     candidate = np.array(mask[y:y + h, x:x + w])
                     square_candidate = convert2Square(candidate)
                     square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
                     square_candidate = square_candidate.reshape((28, 28, 1))
+                    # Lưu (ảnh chữ số, (tọa độ y, tọa độ x))
                     self.candidates.append((square_candidate, (y, x)))
 
     def recognizeChar(self):
-        if len(self.candidates) == 0:
-            return
+        if len(self.candidates) == 0: return
 
-        characters = []
-        coordinates = []
-
-        for char, coordinate in self.candidates:
-            characters.append(char)
-            coordinates.append(coordinate)
+        characters = [c[0] for c in self.candidates]
+        coordinates = [c[1] for c in self.candidates]
 
         characters = np.array(characters)
-        # Dự đoán đồng thời toàn bộ ký tự trong biển số
+        # Chạy CNN dự đoán hàng loạt để tăng tốc độ
         result = self.recogChar.predict_on_batch(characters)
         result_idx = np.argmax(result, axis=1)
 
         self.candidates = []
         for i in range(len(result_idx)):
-            if result_idx[i] == 31: # Bỏ qua nếu là background
-                continue
+            if result_idx[i] == 31: continue # Bỏ qua background
             self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
 
     def format(self):
-        if len(self.candidates) == 0:
-            return "Unknown"
+        if len(self.candidates) == 0: return "Unknown"
 
-        first_line = []
-        second_line = []
+        # Lấy danh sách tọa độ Y để xác định dòng
+        y_coords = [c[1][0] for c in self.candidates]
+        
+        # Đã sửa lỗi ở đây (Tách ra 2 biến rõ ràng)
+        min_y = min(y_coords)
+        max_y = max(y_coords)
 
-        # Sắp xếp các ký tự theo dòng (biển số Việt Nam thường có 1 hoặc 2 dòng)
-        # Lấy mốc dòng đầu tiên từ ký tự đầu tiên tìm thấy
-        base_y = self.candidates[0][1][0]
+        first_line, second_line = [], []
+        
+        # Nếu chênh lệch Y giữa các ký tự > 35 pixel -> Biển số 2 dòng (Xe máy)
+        is_two_lines = (max_y - min_y) > 35
 
-        for candidate, coordinate in self.candidates:
-            if base_y + 40 > coordinate[0]:
-                first_line.append((candidate, coordinate[1]))
-            else:
-                second_line.append((candidate, coordinate[1]))
-
-        def take_second(s):
-            return s[1]
-
-        first_line = sorted(first_line, key=take_second)
-        second_line = sorted(second_line, key=take_second)
-
-        if len(second_line) == 0:
-            license_plate = "".join([str(ele[0]) for ele in first_line])
+        if is_two_lines:
+            y_mean = sum(y_coords) / len(y_coords)
+            for char, (y, x) in self.candidates:
+                if y < y_mean: first_line.append((char, x))
+                else: second_line.append((char, x))
         else:
-            license_plate = "".join([str(ele[0]) for ele in first_line]) + "-" + "".join([str(ele[0]) for ele in second_line])
+            for char, (y, x) in self.candidates:
+                first_line.append((char, x))
 
-        return license_plate
+        # Sắp xếp các ký tự trong mỗi dòng theo trục X (trái qua phải)
+        first_line.sort(key=lambda item: item[1])
+        second_line.sort(key=lambda item: item[1])
+
+        # Hàm xoá ký tự bị quét trùng (Double Detection)
+        def clean_line(line):
+            if not line: return []
+            res = [line[0]]
+            for i in range(1, len(line)):
+                # Nếu khoảng cách x của chữ này so với chữ trước đó > 12 pixel thì mới nhận
+                if abs(line[i][1] - res[-1][1]) > 12: 
+                    res.append(line[i])
+            return res
+
+        first_line = clean_line(first_line)
+        second_line = clean_line(second_line)
+
+        # Ghép kết quả thành chuỗi
+        str_1 = "".join([c[0] for c in first_line])
+        str_2 = "".join([c[0] for c in second_line])
+
+        # Trả về định dạng Dòng 1 - Dòng 2 (nếu có dòng 2)
+        if len(second_line) == 0:
+            return str_1
+        else:
+            return f"{str_1}-{str_2}"
