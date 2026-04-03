@@ -1,11 +1,9 @@
 streamlit
-pandas
-numpy
-matplotlib
-seaborn
-scikit-learn
-Pillow
 opencv-python-headless
+numpy==1.23.5
+pandas
+matplotlib
+tensorflow
 scikit-image
 imutils
-tensorflow-cpu
+protobuf==3.20.3

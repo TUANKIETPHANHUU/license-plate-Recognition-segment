@@ -9,8 +9,8 @@ from src.lp_recognition import E2E
 
 def get_arguments():
     arg = argparse.ArgumentParser()
-    arg.add_argument('-i', '--image_path', help='link to image', default='./samples/1.jpg')
-
+    # Sửa default thành đường dẫn ảnh thực tế của bạn
+    arg.add_argument('-i', '--image_path', help='link to image', default='./sampledata/xemay91.jpg')
     return arg.parse_args()
 
 
