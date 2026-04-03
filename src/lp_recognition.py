@@ -62,7 +62,7 @@ class E2E(object):
         return self.image
 
     def segmentation(self, LpRegion):
-        # CÁCH CHỮA BỆNH UNKNOWN Ô TÔ: Resize ảnh GỐC ngay từ đầu để đồng bộ tỷ lệ H/W
+        # Đồng bộ tỷ lệ khung hình (Khắc phục lỗi Unknown ở xe ô tô)
         LpRegion = imutils.resize(LpRegion, width=400)
         
         V = cv2.split(cv2.cvtColor(LpRegion, cv2.COLOR_BGR2HSV))[2]
@@ -81,7 +81,7 @@ class E2E(object):
             mask = np.zeros(thresh.shape, dtype="uint8")
             mask[labels == label] = 255
 
-            # CÁCH CHỮA BỆNH LẶP CHỮ: Dùng cv2.RETR_EXTERNAL để CHỈ LẤY VIỀN NGOÀI, bỏ qua viền tam giác bên trong các số 4, 8, 0...
+            # RETR_EXTERNAL: Chỉ lấy viền ngoài cùng, bỏ qua lỗ hổng bên trong các số 0, 4, 8...
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2:]
 
             if len(contours) > 0:
@@ -92,8 +92,8 @@ class E2E(object):
                 solidity = cv2.contourArea(contour) / float(w * h)
                 heightRatio = h / float(LpRegion.shape[0])
 
-                # Thu hẹp điều kiện để lọc rác tốt hơn
-                if 0.15 < aspectRatio < 0.9 and solidity > 0.1 and 0.2 < heightRatio < 0.9:
+                # Điều kiện khắt khe hơn: heightRatio > 0.35 (Lọc sạch ốc vít, dấu chấm, dấu gạch ngang)
+                if 0.15 < aspectRatio < 0.9 and solidity > 0.1 and 0.35 < heightRatio < 0.9:
                     candidate = np.array(mask[y:y + h, x:x + w])
                     square_candidate = convert2Square(candidate)
                     square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
@@ -115,12 +115,11 @@ class E2E(object):
         result = self.recogChar.predict_on_batch(characters)
         
         result_idx = np.argmax(result, axis=1)
-        # CÁCH CHỮA BỆNH CHỮ LẠ (E, U...): Lấy độ tự tin (confidence)
         confidences = np.max(result, axis=1) 
 
         self.candidates = []
         for i in range(len(result_idx)):
-            # NẾU LÀ BACKGROUND HOẶC ĐỘ TỰ TIN DƯỚI 75% -> LÀ RÁC -> BỎ QUA
+            # Lọc bỏ rác: class 31 hoặc độ tự tin dưới 75% (Khắc phục lỗi phán bừa ra E, U)
             if result_idx[i] == 31 or confidences[i] < 0.75: 
                 continue
             self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
@@ -143,15 +142,15 @@ class E2E(object):
         def take_second(s):
             return s[1]
 
-        # Hàm lọc trùng lặp tọa độ X (NMS tự chế)
+        # Bộ lọc Non-Maximum Suppression tự chế (Chống lặp ký tự)
         def filter_duplicates(line):
             if not line:
                 return []
             line = sorted(line, key=take_second)
             res = [line[0]]
             for i in range(1, len(line)):
-                # Nếu khoảng cách giữa 2 chữ cái gần nhau quá (< 15 pixel) thì tính là trùng -> Bỏ qua
-                if abs(line[i][1] - res[-1][1]) > 15:
+                # Khoảng cách tối thiểu 30 pixel để tránh dính chữ bị vỡ nét
+                if abs(line[i][1] - res[-1][1]) > 30:
                     res.append(line[i])
             return res
 
