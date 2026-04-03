@@ -52,7 +52,7 @@ class E2E(object):
             # Bước 3: Nhận dạng (OCR) bằng CNN
             self.recognizeChar()
 
-            # Bước 4: Sắp xếp và định dạng chuỗi (Quan trọng cho xe máy 2 dòng)
+            # Bước 4: Sắp xếp và định dạng chuỗi
             license_plate = self.format()
 
             # Bước 5: Vẽ khung và kết quả lên ảnh gốc
@@ -88,8 +88,11 @@ class E2E(object):
                 solidity = cv2.contourArea(contour) / float(w * h)
                 heightRatio = h / float(LpRegion.shape[0])
 
-                # Bộ lọc hình học để loại bỏ nhiễu không phải là chữ số
-                if 0.1 < aspectRatio < 1.0 and solidity > 0.1 and 0.1 < heightRatio < 2.0:
+                # --- ĐÃ SIẾT CHẶT BỘ LỌC TẠI ĐÂY ---
+                # heightRatio > 0.35: Dọn sạch ốc vít, dấu gạch ngang, dấu chấm (chiều cao lùn)
+                # aspectRatio < 0.95: Loại bỏ các vệt nhiễu nằm ngang
+                # solidity > 0.2: Bỏ các nét xước vỡ nát
+                if 0.15 < aspectRatio < 0.95 and solidity > 0.2 and 0.35 < heightRatio < 0.95:
                     candidate = np.array(mask[y:y + h, x:x + w])
                     square_candidate = convert2Square(candidate)
                     square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
@@ -118,8 +121,6 @@ class E2E(object):
 
         # Lấy danh sách tọa độ Y để xác định dòng
         y_coords = [c[1][0] for c in self.candidates]
-        
-        # Đã sửa lỗi ở đây (Tách ra 2 biến rõ ràng)
         min_y = min(y_coords)
         max_y = max(y_coords)
 
@@ -141,13 +142,13 @@ class E2E(object):
         first_line.sort(key=lambda item: item[1])
         second_line.sort(key=lambda item: item[1])
 
-        # Hàm xoá ký tự bị quét trùng (Double Detection)
+        # --- TĂNG KHOẢNG CÁCH LỌC KÝ TỰ TRÙNG ---
         def clean_line(line):
             if not line: return []
             res = [line[0]]
             for i in range(1, len(line)):
-                # Nếu khoảng cách x của chữ này so với chữ trước đó > 12 pixel thì mới nhận
-                if abs(line[i][1] - res[-1][1]) > 12: 
+                # Khoảng cách tối thiểu giữa 2 chữ phải > 20 pixel (loại bỏ bóng ma)
+                if abs(line[i][1] - res[-1][1]) > 20: 
                     res.append(line[i])
             return res
 
@@ -158,7 +159,6 @@ class E2E(object):
         str_1 = "".join([c[0] for c in first_line])
         str_2 = "".join([c[0] for c in second_line])
 
-        # Trả về định dạng Dòng 1 - Dòng 2 (nếu có dòng 2)
         if len(second_line) == 0:
             return str_1
         else:
