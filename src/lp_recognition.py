@@ -3,7 +3,6 @@ import numpy as np
 from skimage import measure
 from imutils import perspective
 import imutils
-
 from src.data_utils import order_points, convert2Square, draw_labels_and_boxes
 from src.lp_detection.detect import detectNumberPlate
 from src.char_classification.model import CNN_Model
@@ -18,7 +17,6 @@ LP_DETECTION_CFG = {
     "classes_path": "./src/lp_detection/cfg/yolo.names",
     "config_path": "./src/lp_detection/cfg/yolov3-tiny.cfg"
 }
-
 CHAR_CLASSIFICATION_WEIGHTS = './src/weights/weight.h5'
 
 class E2E(object):
@@ -42,9 +40,9 @@ class E2E(object):
             pts = order_points(coordinate)
             LpRegion = perspective.four_point_transform(self.image, pts)
             
-            # 1. Xén viền mạnh hơn (8%) để bỏ hẳn viền hoa văn và ốc vít
+            # 1. CẮT VIỀN (MARGIN CROP): Loại bỏ hoa văn mép biển số
             h_lp, w_lp = LpRegion.shape[:2]
-            mx, my = int(w_lp * 0.08), int(h_lp * 0.08)
+            mx, my = int(w_lp * 0.05), int(h_lp * 0.05)
             LpRegion = LpRegion[my:h_lp-my, mx:w_lp-mx]
 
             self.segmentation(LpRegion)
@@ -63,7 +61,6 @@ class E2E(object):
 
         labels = measure.label(thresh, connectivity=2, background=0)
         
-        # 2. Lọc ký tự thông minh: Bỏ các thành phần quá nhỏ (nhiễu)
         char_candidates = []
         for label in np.unique(labels):
             if label == 0: continue
@@ -76,12 +73,14 @@ class E2E(object):
                 (x, y, w, h) = cv2.boundingRect(contour)
                 area = cv2.contourArea(contour)
                 
-                # Chỉ lấy những vật thể có diện tích đủ lớn (lọc bỏ nhiễu li ti)
-                if area > 300: # Ngưỡng diện tích có thể điều chỉnh
+                # 2. LỌC DIỆN TÍCH CỰC MẠNH: Loại bỏ dấu gạch ngang và đốm nhiễu
+                # Chữ thật trên biển số sau khi resize lên 400px thường có diện tích > 600
+                if area > 600: 
                     aspectRatio = w / float(h)
                     heightRatio = h / float(thresh.shape[0])
                     
-                    if 0.1 < aspectRatio < 1.0 and 0.4 < heightRatio < 0.95:
+                    # Chữ số thường có dáng đứng (w < h)
+                    if 0.1 < aspectRatio < 0.85 and 0.4 < heightRatio < 0.95:
                         candidate = np.array(mask[y:y + h, x:x + w])
                         sq = convert2Square(candidate)
                         sq = cv2.resize(sq, (28, 28), cv2.INTER_AREA).reshape((28, 28, 1))
@@ -92,25 +91,28 @@ class E2E(object):
     def recognizeChar(self):
         if not self.candidates: return
         chars = np.array([c[0] for c in self.candidates])
-        # 3. Lọc theo độ tin cậy (Confidence)
         preds = self.recogChar.predict_on_batch(chars)
         
         final_chars = []
         for i, prob in enumerate(preds):
             idx = np.argmax(prob)
-            # Nếu model không chắc chắn (>70%) hoặc là Background thì bỏ
-            if idx != 31 and np.max(prob) > 0.7:
+            conf = np.max(prob)
+            
+            # 3. LỌC ĐỘ TIN CẬY (CONFIDENCE): Chỉ lấy nếu máy chắc chắn trên 85%
+            if idx != 31 and conf > 0.85:
                 final_chars.append((ALPHA_DICT[idx], self.candidates[i][1]))
         self.candidates = final_chars
 
     def format(self):
-        if not self.candidates: return "Unknown"
+        if not self.candidates: return ""
         
-        # Sắp xếp theo y để chia dòng
+        # Sắp xếp theo trục Y để chia dòng
         self.candidates.sort(key=lambda x: x[1][0])
-        first_line = []
-        second_line = []
-        mid_y = self.candidates[0][1][0] + 45 # Ngưỡng chia dòng
+        first_line, second_line = [], []
+        
+        # Ngưỡng chia dòng linh hoạt
+        y_coords = [c[1][0] for c in self.candidates]
+        mid_y = (max(y_coords) + min(y_coords)) / 2
 
         for char, pos in self.candidates:
             if pos[0] < mid_y: first_line.append((char, pos[1]))
