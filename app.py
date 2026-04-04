@@ -183,7 +183,8 @@ else:
     col_a, col_b = st.columns(2)
     
     with col_a:
-        st.subheader("Ma trận nhầm lẫn (CNN)")
+        # Đã cập nhật lại tên cho chuẩn xác theo nguyên tắc Đánh giá mô hình
+        st.subheader("Ma trận nhầm lẫn trên tập Test (CNN)")
         # Tự vẽ Confusion Matrix bằng Seaborn
         labels = ['0', 'D', '8', 'B', '5', 'S', 'G']
         data_cm = [
