@@ -148,7 +148,7 @@ else:
     st.write("Đánh giá hiệu suất chi tiết của từng module trong hệ thống.")
 
     # Nhóm 1: Phát hiện (Detection)
-    st.markdown("#### 🎯 Mô hình Phát hiện (Detection - YOLOv8)")
+    st.markdown("#### 🎯 Mô hình Phát hiện (Detection - YOLO)")
     d1, d2, d3 = st.columns(3)
     with d1:
         st.metric("IoU Trung bình", "0.88", help="Intersection over Union")
@@ -160,7 +160,7 @@ else:
     st.write("") # Tạo khoảng trắng
 
     # Nhóm 2: Nhận dạng (Recognition)
-    st.markdown("#### 🔠 Mô hình Nhận dạng (Recognition - OCR/CNN)")
+    st.markdown("#### 🔠 Mô hình Nhận dạng (Recognition - CNN)")
     r1, r2, r3 = st.columns(3)
     with r1:
         st.metric("Accuracy", "95.2%", delta="2.1%")
@@ -183,7 +183,7 @@ else:
     col_a, col_b = st.columns(2)
     
     with col_a:
-        st.subheader("Ma trận nhầm lẫn (OCR - CNN)")
+        st.subheader("Ma trận nhầm lẫn (CNN)")
         # Tự vẽ Confusion Matrix bằng Seaborn
         labels = ['0', 'D', '8', 'B', '5', 'S', 'G']
         data_cm = [
