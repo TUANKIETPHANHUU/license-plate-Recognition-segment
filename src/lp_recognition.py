@@ -51,6 +51,16 @@ class E2E(object):
             # crop number plate used by bird's eyes view transformation
             LpRegion = perspective.four_point_transform(self.image, pts)
             
+            # =========================================================
+            # CẮT VIỀN BIỂN SỐ ĐỂ LOẠI BỎ ỐC VÍT / VIỀN ĐEN GÂY NHIỄU
+            # =========================================================
+            h_lp, w_lp = LpRegion.shape[:2]
+            margin_x = int(w_lp * 0.07)  # Xén 7% chiều rộng trái/phải
+            margin_y = int(h_lp * 0.07)  # Xén 7% chiều cao trên/dưới
+            
+            LpRegion = LpRegion[margin_y:h_lp-margin_y, margin_x:w_lp-margin_x]
+            # =========================================================
+
             # segmentation
             self.segmentation(LpRegion)
 
@@ -119,6 +129,7 @@ class E2E(object):
             characters.append(char)
             coordinates.append(coordinate)
 
+        # Tránh lỗi nếu ảnh xén quá tay không còn chữ nào
         if not characters:
             return
 
@@ -133,6 +144,7 @@ class E2E(object):
             self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
 
     def format(self):
+        # Trả về thông báo nếu không đọc được chữ thay vì bị văng lỗi
         if not self.candidates:
             return "Không đọc được"
 
@@ -155,21 +167,5 @@ class E2E(object):
             license_plate = "".join([str(ele[0]) for ele in first_line])
         else:   # if license plate has 2 lines
             license_plate = "".join([str(ele[0]) for ele in first_line]) + "-" + "".join([str(ele[0]) for ele in second_line])
-
-        # =========================================================
-        # XỬ LÝ LỖI DƯ SỐ 1 DO NHIỄU VIỀN (POST-PROCESSING)
-        # =========================================================
-        # Biển số VN thường có tối đa 8-9 ký tự. Nếu dài hơn, cắt bỏ số 1 và I ở rìa.
-        if len(license_plate.replace("-", "")) > 9: 
-            lines = license_plate.split('-')
-            
-            cleaned_lines = []
-            for line in lines:
-                # Cắt số 1 hoặc chữ I dính ở 2 đầu của mỗi dòng
-                cleaned_line = line.strip('1I') 
-                cleaned_lines.append(cleaned_line)
-                
-            license_plate = "-".join(cleaned_lines)
-        # =========================================================
 
         return license_plate
