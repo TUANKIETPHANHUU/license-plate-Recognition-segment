@@ -52,13 +52,16 @@ class E2E(object):
             LpRegion = perspective.four_point_transform(self.image, pts)
             
             # =========================================================
-            # CẮT VIỀN BIỂN SỐ ĐỂ LOẠI BỎ ỐC VÍT / VIỀN ĐEN GÂY NHIỄU
+            # GIẢI PHÁP 1: CẮT XÉN LỀ ĐỂ LOẠI BỎ ỐC VÍT / VIỀN ĐEN 
             # =========================================================
             h_lp, w_lp = LpRegion.shape[:2]
-            margin_x = int(w_lp * 0.07)  # Xén 7% chiều rộng trái/phải
-            margin_y = int(h_lp * 0.07)  # Xén 7% chiều cao trên/dưới
             
-            LpRegion = LpRegion[margin_y:h_lp-margin_y, margin_x:w_lp-margin_x]
+            # Xén 7% chiều rộng trái/phải và 10% chiều cao trên/dưới
+            w_padding = int(w_lp * 0.07)  
+            h_padding = int(h_lp * 0.10)  
+            
+            # Cắt sâu vào bên trong ảnh
+            LpRegion = LpRegion[h_padding:h_lp - h_padding, w_padding:w_lp - w_padding]
             # =========================================================
 
             # segmentation
@@ -144,9 +147,9 @@ class E2E(object):
             self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
 
     def format(self):
-        # Trả về thông báo nếu không đọc được chữ thay vì bị văng lỗi
+        # Trả về chuỗi trống nếu không tìm thấy chữ
         if not self.candidates:
-            return "Không đọc được"
+            return ""
 
         first_line = []
         second_line = []
