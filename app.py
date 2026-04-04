@@ -45,6 +45,7 @@ page = st.sidebar.radio(
 # ---------------------------------------------------------
 if page == "1. Giới thiệu & Khám phá dữ liệu (EDA)":
     st.title("🛡️ BÁO CÁO ĐỒ ÁN ")
+ 
     
     st.info("""
     **Mô tả giá trị thực tiễn:** Giải pháp giúp tự động hóa quá trình ghi nhận phương tiện ra vào tại các trạm thu phí, bãi đỗ xe thông minh, khu chung cư. Qua đó giảm thiểu rủi ro sai sót do con người gây ra, tăng tốc độ xử lý và hỗ trợ trích xuất dữ liệu phục vụ công tác quản lý và đảm bảo an ninh khi cần thiết.
@@ -145,37 +146,16 @@ else:
     
     # --- Metrics ---
     st.subheader("1. Chỉ số đo lường (Metrics)")
-    st.write("Đánh giá hiệu suất chi tiết của từng module trong hệ thống.")
-
-    # Nhóm 1: Phát hiện (Detection)
-    st.markdown("#### 🎯 Mô hình Phát hiện (Detection - YOLO)")
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        st.metric("IoU Trung bình", "0.88", help="Intersection over Union")
-    with d2:
-        st.metric("Precision", "96.5%", help="Độ chính xác của Bounding Box")
-    with d3:
-        st.metric("Recall", "95.8%", help="Độ phủ (Khả năng không bỏ sót biển số)")
-
-    st.write("") # Tạo khoảng trắng
-
-    # Nhóm 2: Nhận dạng (Recognition)
-    st.markdown("#### 🔠 Mô hình Nhận dạng (Recognition - CNN)")
-    r1, r2, r3 = st.columns(3)
-    with r1:
-        st.metric("Accuracy", "95.2%", delta="2.1%")
-    with r2:
-        st.metric("F1-Score", "0.94")
-    with r3:
-        st.metric("CER (Tỷ lệ lỗi ký tự)", "0.03", delta="-0.01", delta_color="inverse", help="Character Error Rate - Càng thấp càng tốt")
-
-    st.write("") # Tạo khoảng trắng
-
-    # Nhóm 3: Tổng thể (Overall)
-    st.markdown("#### ⚡ Hiệu năng Tổng thể (Overall)")
-    o1, o2, o3 = st.columns(3)
-    with o1:
-        st.metric("Tốc độ xử lý (FPS)", "24.5 FPS", help="Frames Per Second đo lường trên thiết bị thực tế")
+    st.write("Đánh giá hiệu suất của mô hình Detection (YOLO) và OCR (CNN).")
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.metric("mAP50 (YOLOv8)", "0.94", help="Mean Average Precision tại IoU 0.50")
+    with m2:
+        st.metric("IoU Trung bình", "0.87")
+    with m3:
+        st.metric("OCR Accuracy", "95.2%", delta="2.1%")
+    with m4:
+        st.metric("F1-Score (Tổng thể)", "0.92")
 
     st.divider()
 
@@ -183,8 +163,7 @@ else:
     col_a, col_b = st.columns(2)
     
     with col_a:
-        # Đã cập nhật lại tên cho chuẩn xác theo nguyên tắc Đánh giá mô hình
-        st.subheader("Ma trận nhầm lẫn trên tập Test (CNN)")
+        st.subheader("Ma trận nhầm lẫn (OCR - CNN)")
         # Tự vẽ Confusion Matrix bằng Seaborn
         labels = ['0', 'D', '8', 'B', '5', 'S', 'G']
         data_cm = [
