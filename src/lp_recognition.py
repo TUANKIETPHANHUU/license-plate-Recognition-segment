@@ -3,6 +3,7 @@ import numpy as np
 from skimage import measure
 from imutils import perspective
 import imutils
+
 from src.data_utils import order_points, convert2Square, draw_labels_and_boxes
 from src.lp_detection.detect import detectNumberPlate
 from src.char_classification.model import CNN_Model
@@ -17,6 +18,7 @@ LP_DETECTION_CFG = {
     "classes_path": "./src/lp_detection/cfg/yolo.names",
     "config_path": "./src/lp_detection/cfg/yolov3-tiny.cfg"
 }
+
 CHAR_CLASSIFICATION_WEIGHTS = './src/weights/weight.h5'
 
 class E2E(object):
@@ -29,98 +31,123 @@ class E2E(object):
 
     def extractLP(self):
         coordinates = self.detectLP.detect(self.image)
-        if len(coordinates) == 0: return
+        if len(coordinates) == 0:
+            ValueError('No images detected')
+
         for coordinate in coordinates:
             yield coordinate
 
     def predict(self, image):
+        # Input image or frame
         self.image = image
-        for coordinate in self.extractLP():
-            self.candidates = []
-            pts = order_points(coordinate)
-            LpRegion = perspective.four_point_transform(self.image, pts)
-            
-            # 1. CẮT VIỀN (MARGIN CROP): Loại bỏ hoa văn mép biển số
-            h_lp, w_lp = LpRegion.shape[:2]
-            mx, my = int(w_lp * 0.05), int(h_lp * 0.05)
-            LpRegion = LpRegion[my:h_lp-my, mx:w_lp-mx]
 
+        for coordinate in self.extractLP():     # detect license plate by yolov3
+            self.candidates = []
+
+            # convert (x_min, y_min, width, height) to coordinate(top left, top right, bottom left, bottom right)
+            pts = order_points(coordinate)
+
+            # crop number plate used by bird's eyes view transformation
+            LpRegion = perspective.four_point_transform(self.image, pts)
+           
+            # segmentation
             self.segmentation(LpRegion)
+
+            # recognize characters
             self.recognizeChar()
+
+            # format and display license plate
             license_plate = self.format()
+
+            # draw labels
             self.image = draw_labels_and_boxes(self.image, license_plate, coordinate)
+
         return self.image
 
     def segmentation(self, LpRegion):
+        # apply thresh to extracted licences plate
         V = cv2.split(cv2.cvtColor(LpRegion, cv2.COLOR_BGR2HSV))[2]
+
+        # adaptive threshold
         T = threshold_local(V, 15, offset=10, method="gaussian")
         thresh = (V > T).astype("uint8") * 255
+
+        # convert black pixel of digits to white pixel
         thresh = cv2.bitwise_not(thresh)
         thresh = imutils.resize(thresh, width=400)
         thresh = cv2.medianBlur(thresh, 5)
 
+        # connected components analysis
         labels = measure.label(thresh, connectivity=2, background=0)
-        
-        char_candidates = []
+
+        # loop over the unique components
         for label in np.unique(labels):
-            if label == 0: continue
+            # if this is background label, ignore it
+            if label == 0:
+                continue
+
+            # init mask to store the location of the character candidates
             mask = np.zeros(thresh.shape, dtype="uint8")
             mask[labels == label] = 255
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            # find contours from mask
+            _, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             if len(contours) > 0:
                 contour = max(contours, key=cv2.contourArea)
                 (x, y, w, h) = cv2.boundingRect(contour)
-                area = cv2.contourArea(contour)
-                
-                # 2. LỌC DIỆN TÍCH CỰC MẠNH: Loại bỏ dấu gạch ngang và đốm nhiễu
-                # Chữ thật trên biển số sau khi resize lên 400px thường có diện tích > 600
-                if area > 600: 
-                    aspectRatio = w / float(h)
-                    heightRatio = h / float(thresh.shape[0])
-                    
-                    # Chữ số thường có dáng đứng (w < h)
-                    if 0.1 < aspectRatio < 0.85 and 0.4 < heightRatio < 0.95:
-                        candidate = np.array(mask[y:y + h, x:x + w])
-                        sq = convert2Square(candidate)
-                        sq = cv2.resize(sq, (28, 28), cv2.INTER_AREA).reshape((28, 28, 1))
-                        char_candidates.append((sq, (y, x)))
-        
-        self.candidates = char_candidates
+
+                # rule to determine characters
+                aspectRatio = w / float(h)
+                solidity = cv2.contourArea(contour) / float(w * h)
+                heightRatio = h / float(LpRegion.shape[0])
+
+                if 0.1 < aspectRatio < 1.0 and solidity > 0.1 and 0.35 < heightRatio < 2.0:
+                    # extract characters
+                    candidate = np.array(mask[y:y + h, x:x + w])
+                    square_candidate = convert2Square(candidate)
+                    square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
+                    square_candidate = square_candidate.reshape((28, 28, 1))
+                    self.candidates.append((square_candidate, (y, x)))
 
     def recognizeChar(self):
-        if not self.candidates: return
-        chars = np.array([c[0] for c in self.candidates])
-        preds = self.recogChar.predict_on_batch(chars)
-        
-        final_chars = []
-        for i, prob in enumerate(preds):
-            idx = np.argmax(prob)
-            conf = np.max(prob)
-            
-            # 3. LỌC ĐỘ TIN CẬY (CONFIDENCE): Chỉ lấy nếu máy chắc chắn trên 85%
-            if idx != 31 and conf > 0.85:
-                final_chars.append((ALPHA_DICT[idx], self.candidates[i][1]))
-        self.candidates = final_chars
+        characters = []
+        coordinates = []
+
+        for char, coordinate in self.candidates:
+            characters.append(char)
+            coordinates.append(coordinate)
+
+        characters = np.array(characters)
+        result = self.recogChar.predict_on_batch(characters)
+        result_idx = np.argmax(result, axis=1)
+
+        self.candidates = []
+        for i in range(len(result_idx)):
+            if result_idx[i] == 31:    # if is background or noise, ignore it
+                continue
+            self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
 
     def format(self):
-        if not self.candidates: return ""
-        
-        # Sắp xếp theo trục Y để chia dòng
-        self.candidates.sort(key=lambda x: x[1][0])
-        first_line, second_line = [], []
-        
-        # Ngưỡng chia dòng linh hoạt
-        y_coords = [c[1][0] for c in self.candidates]
-        mid_y = (max(y_coords) + min(y_coords)) / 2
+        first_line = []
+        second_line = []
 
-        for char, pos in self.candidates:
-            if pos[0] < mid_y: first_line.append((char, pos[1]))
-            else: second_line.append((char, pos[1]))
+        for candidate, coordinate in self.candidates:
+            if self.candidates[0][1][0] + 40 > coordinate[0]:
+                first_line.append((candidate, coordinate[1]))
+            else:
+                second_line.append((candidate, coordinate[1]))
 
-        first_line.sort(key=lambda x: x[1])
-        second_line.sort(key=lambda x: x[1])
+        def take_second(s):
+            return s[1]
 
-        l1 = "".join([c[0] for c in first_line])
-        l2 = "".join([c[0] for c in second_line])
-        return f"{l1}-{l2}" if l2 else l1
+        first_line = sorted(first_line, key=take_second)
+        second_line = sorted(second_line, key=take_second)
+
+        if len(second_line) == 0:  # if license plate has 1 line
+            license_plate = "".join([str(ele[0]) for ele in first_line])
+        else:   # if license plate has 2 lines
+            license_plate = "".join([str(ele[0]) for ele in first_line]) + "-" + "".join([str(ele[0]) for ele in second_line])
+
+        return license_plate
+		
