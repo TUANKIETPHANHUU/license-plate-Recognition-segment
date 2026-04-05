@@ -238,4 +238,4 @@ else:
         * **Post-processing (Hậu xử lý):** Áp dụng Regular Expression (Rule-based) theo format biển số Việt Nam. Ví dụ: Ký tự thứ 3 của xe máy bắt buộc phải là chữ cái (A-Z), nếu CNN dự đoán ra số `8` -> tự động sửa thành `B`.
         * **Data Augmentation:** Tăng cường dữ liệu huấn luyện bằng cách thêm nhiễu (Gaussian Noise), giả lập độ chói (Brightness), và cắt xén ngẫu nhiên (Cutout).
         * **Thuật toán NMS:** Cải thiện Non-Maximum Suppression để chống việc một chữ cái bị cắt vỡ thành nhiều khung Bounding Box chồng chéo.
-        """)
+        """)  
