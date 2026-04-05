@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import time
 import pandas as pd
-import matplotlib.subplots as plt
 import seaborn as sns
 import matplotlib.pyplot as plt
 from PIL import Image
