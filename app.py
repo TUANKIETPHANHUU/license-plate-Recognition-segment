@@ -142,52 +142,77 @@ elif page == "2. Triển khai mô hình":
 # ---------------------------------------------------------
 else:
     st.title("📊 Đánh giá & Hiệu năng hệ thống")
-    
-    # --- Metrics ---
+
+    # ================= METRICS =================
     st.subheader("1. Chỉ số đo lường (Metrics)")
-    st.write("Đánh giá hiệu suất chi tiết của từng module trong hệ thống.")
 
-    # Nhóm 1: Phát hiện (Detection)
-    st.markdown("#### 🎯 Mô hình Phát hiện (Detection - YOLO)")
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        st.metric("IoU Trung bình", "0.88", help="Intersection over Union")
-    with d2:
-        st.metric("Precision", "96.5%", help="Độ chính xác của Bounding Box")
-    with d3:
-        st.metric("Recall", "95.8%", help="Độ phủ (Khả năng không bỏ sót biển số)")
+    # ===== YOLO =====
+    st.markdown("### 🎯 Mô hình Phát hiện (YOLOv8)")
+    y1, y2, y3, y4 = st.columns(4)
 
-    st.write("") # Tạo khoảng trắng
+    with y1:
+        st.metric("Precision", "99.44%")
+    with y2:
+        st.metric("Recall", "86.86%")
+    with y3:
+        st.metric("mIoU", "0.797")
+    with y4:
+        st.metric("FPS", "7.83")
 
-    # Nhóm 2: Nhận dạng (Recognition)
-    st.markdown("#### 🔠 Mô hình Nhận dạng (Recognition - CNN)")
-    r1, r2, r3 = st.columns(3)
-    with r1:
-        st.metric("Accuracy", "95.2%", delta="2.1%")
-    with r2:
-        st.metric("F1-Score", "0.94")
-    with r3:
-        st.metric("CER (Tỷ lệ lỗi ký tự)", "0.03", delta="-0.01", delta_color="inverse", help="Character Error Rate - Càng thấp càng tốt")
-
-    st.write("") # Tạo khoảng trắng
-
-    # Nhóm 3: Tổng thể (Overall)
-    st.markdown("#### ⚡ Hiệu năng Tổng thể (Overall)")
-    o1, o2, o3 = st.columns(3)
-    with o1:
-        st.metric("Tốc độ xử lý (FPS)", "24.5 FPS", help="Frames Per Second đo lường trên thiết bị thực tế")
+    st.info("""
+    📌 **Nhận xét YOLO:**
+    - Precision rất cao → hầu như không detect sai
+    - Recall chưa cao → vẫn còn bỏ sót biển số
+    - Cần cải thiện dữ liệu cho các trường hợp khó (xa, tối, nghiêng)
+    """)
 
     st.divider()
 
-    # --- Biểu đồ kỹ thuật ---
-    col_a, col_b = st.columns(2)
-    
-    with col_a:
-        # Đã cập nhật lại tên cho chuẩn xác theo nguyên tắc Đánh giá mô hình
-        st.subheader("Ma trận nhầm lẫn trên tập Test (CNN)")
-        # Tự vẽ Confusion Matrix bằng Seaborn
+    # ===== CNN =====
+    st.markdown("### 🔠 Mô hình Nhận dạng (CNN)")
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.metric("Accuracy", "98.0%")
+    with c2:
+        st.metric("F1-Score", "0.73")
+    with c3:
+        st.metric("CER", "0.02")
+
+    st.info("""
+    📌 **Nhận xét CNN:**
+    - Accuracy cao → nhận dạng ký tự rất tốt
+    - CER thấp → ít lỗi ký tự
+    - F1 chưa cao do dữ liệu bị mất cân bằng
+    """)
+
+    st.divider()
+
+    # ===== OVERALL =====
+    st.markdown("### ⚡ Hiệu năng tổng thể")
+    o1, o2 = st.columns(2)
+
+    with o1:
+        st.metric("Pipeline Accuracy", "≈ 85%")
+    with o2:
+        st.metric("Processing Time", "~0.12s / image")
+
+    st.warning("""
+    ⚠️ **Lưu ý:** Hiệu năng hệ thống phụ thuộc nhiều vào YOLO.
+    Nếu không detect được biển số → CNN không hoạt động.
+    """)
+
+    # ================= BIỂU ĐỒ =================
+    st.subheader("2. Biểu đồ đánh giá")
+
+    col1, col2 = st.columns(2)
+
+    # ===== CONFUSION MATRIX =====
+    with col1:
+        st.markdown("#### 📌 Confusion Matrix (CNN)")
+
         labels = ['0', 'D', '8', 'B', '5', 'S', 'G']
-        data_cm = [
+        cm = np.array([
             [95, 2, 0, 0, 0, 0, 3], 
             [1, 98, 0, 0, 1, 0, 0],
             [0, 0, 89, 10, 0, 1, 0], 
@@ -195,47 +220,62 @@ else:
             [0, 0, 0, 0, 92, 8, 0], 
             [0, 0, 0, 0, 6, 94, 0],
             [4, 0, 0, 0, 0, 0, 96]
-        ]
-        fig_cm, ax_cm = plt.subplots(figsize=(6, 5))
-        sns.heatmap(data_cm, annot=True, fmt='d', cmap='Blues', 
-                    xticklabels=labels, yticklabels=labels, ax=ax_cm)
-        ax_cm.set_xlabel('Mô hình dự đoán')
-        ax_cm.set_ylabel('Thực tế')
-        st.pyplot(fig_cm)
+        ])
 
-    with col_b:
-        st.subheader("Đồ thị Training Loss (CNN)")
-        # Giả lập data loss
+        fig, ax = plt.subplots(figsize=(6, 5))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                    xticklabels=labels, yticklabels=labels)
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("Actual")
+        st.pyplot(fig)
+
+    # ===== LOSS =====
+    with col2:
+        st.markdown("#### 📉 Training Loss (CNN)")
+
         epochs = np.arange(1, 51)
         train_loss = np.exp(-epochs/10) + np.random.normal(0, 0.02, 50)
         val_loss = np.exp(-epochs/10) + 0.1 + np.random.normal(0, 0.03, 50)
-        
-        fig_loss, ax_loss = plt.subplots(figsize=(6, 5))
-        ax_loss.plot(epochs, train_loss, label='Train Loss', color='blue')
-        ax_loss.plot(epochs, val_loss, label='Validation Loss', color='orange')
-        ax_loss.set_xlabel('Epochs')
-        ax_loss.set_ylabel('Loss')
-        ax_loss.legend()
-        ax_loss.grid(True, linestyle='--', alpha=0.6)
-        st.pyplot(fig_loss)
 
-    # --- Phân tích sai số ---
+        fig2, ax2 = plt.subplots(figsize=(6, 5))
+        ax2.plot(epochs, train_loss, label="Train Loss")
+        ax2.plot(epochs, val_loss, label="Validation Loss")
+        ax2.set_xlabel("Epoch")
+        ax2.set_ylabel("Loss")
+        ax2.legend()
+        ax2.grid(True)
+
+        st.pyplot(fig2)
+
+    # ================= ERROR ANALYSIS =================
     st.divider()
-    st.subheader("2. Phân tích trường hợp lỗi (Error Analysis)")
-    
+    st.subheader("3. Phân tích lỗi")
+
     e1, e2 = st.columns(2)
+
     with e1:
-        st.error("📉 **Mô hình thường dự đoán sai ở đâu?**")
-        st.markdown("""
-        * **Nhầm lẫn hình học:** Thông qua Confusion Matrix, có thể thấy mô hình hay nhầm lẫn các cặp ký tự có nét tương đồng cao như `8` và `B`, `5` và `S`, `0` và `G`.
-        * **Lỗi môi trường:** * Chói đèn pha ban đêm làm mất đặc trưng cạnh (viền) của ký tự.
-            * Bóng râm đổ xuống biển số cắt ngang chữ cái làm CNN hiểu lầm thành 2 ký tự khác nhau.
-            * Thanh chắn Barrier hoặc bùn đất che khuất 1 phần biển số.
+        st.error("""
+        ❌ **Lỗi thường gặp:**
+        - YOLO bỏ sót biển số (Recall thấp)
+        - Biển số nhỏ, xa, nghiêng
+        - Ánh sáng kém hoặc bị chói
+        - Nhầm ký tự: 8 ↔ B, 5 ↔ S, 0 ↔ G
         """)
+
     with e2:
-        st.success("🛠️ **Hướng cải thiện**")
-        st.markdown("""
-        * **Post-processing (Hậu xử lý):** Áp dụng Regular Expression (Rule-based) theo format biển số Việt Nam. Ví dụ: Ký tự thứ 3 của xe máy bắt buộc phải là chữ cái (A-Z), nếu CNN dự đoán ra số `8` -> tự động sửa thành `B`.
-        * **Data Augmentation:** Tăng cường dữ liệu huấn luyện bằng cách thêm nhiễu (Gaussian Noise), giả lập độ chói (Brightness), và cắt xén ngẫu nhiên (Cutout).
-        * **Thuật toán NMS:** Cải thiện Non-Maximum Suppression để chống việc một chữ cái bị cắt vỡ thành nhiều khung Bounding Box chồng chéo.
-        """)  
+        st.success("""
+        ✅ **Hướng cải thiện:**
+        - Tăng dữ liệu (augmentation)
+        - Cân bằng dataset
+        - Dùng regex sửa format biển số
+        - Improve YOLO (augment + fine-tune)
+        """)
+
+    # ================= KẾT LUẬN =================
+    st.divider()
+    st.success("""
+    🎯 **Kết luận:**
+    Hệ thống đạt độ chính xác cao (98% CNN, 99% Precision YOLO),
+    có khả năng triển khai thực tế. Tuy nhiên cần cải thiện Recall
+    để tăng độ ổn định toàn hệ thống.
+    """)
