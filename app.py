@@ -3,6 +3,9 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from PIL import Image
+import cv2
+import numpy as np
+import time
 
 # --- Cấu hình trang ---
 st.set_page_config(
@@ -10,6 +13,17 @@ st.set_page_config(
     layout="wide", 
     page_icon="🛡️"
 )
+
+# --- Khởi tạo và Cache mô hình ---
+# HÀM NÀY BỊ THIẾU TRONG CODE CỦA BẠN - MÌNH ĐÃ THÊM LẠI
+@st.cache_resource
+def load_model():
+    try:
+        from src.lp_recognition import E2E
+        return E2E()
+    except Exception as e:
+        # Nếu không có model thật, trả về None để chạy chế độ Demo (Mockup)
+        return None
 
 # --- Giao diện Sidebar ---
 st.sidebar.title("🛡️ ALPR Dashboard")
@@ -27,7 +41,7 @@ page = st.sidebar.radio(
 )
 
 # ---------------------------------------------------------
-# TRANG 1: GIỚI THIỆU & EDA (Giữ nguyên)
+# TRANG 1: GIỚI THIỆU & EDA
 # ---------------------------------------------------------
 if page == "1. Giới thiệu & Khám phá dữ liệu (EDA)":
     st.title("🛡️ BÁO CÁO ĐỒ ÁN - PHAN HỮU TUẤN KIỆT")
@@ -37,7 +51,6 @@ if page == "1. Giới thiệu & Khám phá dữ liệu (EDA)":
 
     st.subheader("📊 Khám phá dữ liệu (EDA)")
     
-    # Dữ liệu EDA giả định của bạn
     data = {
         'Loại xe': ['Xe ô tô (car)', 'Xe máy (xemay)', 'Xe quân đội (quandoi)', 'Xe ngoại giao (ngoaigiao)'], 
         'Số lượng': [4891, 2726, 536, 79]
@@ -56,12 +69,10 @@ if page == "1. Giới thiệu & Khám phá dữ liệu (EDA)":
         st.pyplot(fig_bar)
     with col3:
         fig_pie, ax_pie = plt.subplots(figsize=(5, 5))
-        # Sử dụng cùng một palette màu để đồng bộ
         ax_pie.pie(df['Số lượng'], labels=df['Loại xe'], autopct='%1.1f%%', colors=sns.color_palette('viridis', len(df)), startangle=140)
         ax_pie.set_title("Tỷ trọng các loại biển số")
         st.pyplot(fig_pie)
 
-    # Nhận xét dữ liệu
     st.markdown("""
     **📝 Nhận xét về dữ liệu (Data Insights):**
     * **Độ lệch dữ liệu (Imbalance):** Dữ liệu bị mất cân bằng cấu trúc nghiêm trọng. Nhóm Xe ô tô chiếm tỷ trọng áp đảo (gần 60%), trong khi Xe ngoại giao chỉ có 79 ảnh (chiếm chưa tới 1%).
@@ -69,7 +80,6 @@ if page == "1. Giới thiệu & Khám phá dữ liệu (EDA)":
     * **Hướng xử lý:** Cần áp dụng các kỹ thuật Data Augmentation (tăng cường dữ liệu) hoặc thay đổi trọng số phạt (Class Weights) trong hàm Loss đối với các class thiểu số khi huấn luyện YOLOv8.
     """)
 
-# ---------------------------------------------------------
 # ---------------------------------------------------------
 # TRANG 2: TRIỂN KHAI MÔ HÌNH
 # ---------------------------------------------------------
@@ -83,27 +93,24 @@ elif page == "2. Triển khai mô hình":
     st.subheader("🖼️ Ví dụ minh họa hoạt động")
     st.markdown("*Dưới đây là một ví dụ về cách hệ thống phát hiện biển số, vẽ khung bao và đọc chuỗi ký tự:*")
     
-    # Hiển thị ảnh demo_app.jpg nguyên bản (Ảnh ghép sẵn trái-phải của bạn)
     try:
-        # Đường dẫn tới file ảnh Screenshot của bạn (đã đổi tên thành demo_app.jpg)
+        # LƯU Ý: Bạn nhớ kiểm tra lại tên file chính xác trên Github là demo.png hay demo.jpg nhé
         st.image("images/demo.png", caption="Trái: Ảnh gốc đầu vào | Phải: Kết quả YOLOv8 nhận diện (59-M1 902.08)", use_container_width=True)
     except Exception as e:
-        st.error(f"Không tìm thấy ảnh minh họa. Vui lòng kiểm tra lại đường dẫn thư mục images/demo_app.jpg (Lỗi: {e})")
+        st.warning(f"⚠️ Chưa hiển thị được ảnh Demo do sai đường dẫn. Vui lòng kiểm tra lại file `images/demo.png` trên thư mục Github của bạn.")
 
-    st.divider() # Thước kẻ ngang phân cách
+    st.divider()
 
     # --- 2. PHẦN TRẢI NGHIỆM THỰC TẾ ---
     st.subheader("🔍 Trải nghiệm hệ thống")
     st.markdown("*Tải lên hình ảnh phương tiện của bạn bên dưới để thực hiện nhận diện:*")
     
-    # Load model (từ hàm load_model định nghĩa ở đầu script)
+    # Load model an toàn
     model = load_model()
     
-    # Widget tải ảnh
     uploaded_file = st.file_uploader("Tải lên hình ảnh xe (JPG/PNG)...", type=["jpg", "png", "jpeg"])
 
     if uploaded_file is not None:
-        # Xử lý file ảnh tải lên thành mảng numpy cho OpenCV
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
@@ -122,26 +129,23 @@ elif page == "2. Triển khai mô hình":
                         predicted_text = "Kết quả thực từ mô hình" 
                         confidence = 0.92 
                     else:
-                        # --- Chạy mô phỏng (Mockup) nếu chưa có mô hình thật ---
+                        # --- Chạy mô phỏng (Mockup) ---
                         time.sleep(1.5)
                         result_img = img.copy()
-                        # Vẽ khung bao mô phỏng
                         cv2.rectangle(result_img, (50, 50), (250, 150), (255, 0, 255), 2)
-                        # Ghi chữ mô phỏng
                         cv2.putText(result_img, "59-M1 902.08", (50, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                         predicted_text = "59-M1 902.08 (MOCKUP)"
                         confidence = 0.985
 
                     process_time = time.time() - start_time
                     
-                    # Hiển thị kết quả
                     st.image(result_img, channels="BGR", caption="Kết quả xử lý", use_container_width=True)
                     st.success(f"**Chuỗi biển số:** `{predicted_text}`")
                     st.info(f"**Độ tin cậy (Confidence):** {confidence*100:.1f}%")
                     st.caption(f"⏱️ Thời gian trích xuất: {process_time:.3f} giây")
 
 # ---------------------------------------------------------
-# TRANG 3: ĐÁNH GIÁ & HIỆU NĂNG (Tích hợp image_0.png & image_1.png)
+# TRANG 3: ĐÁNH GIÁ & HIỆU NĂNG
 # ---------------------------------------------------------
 else:
     st.title("📊 Đánh giá & Hiệu năng hệ thống")
@@ -149,7 +153,6 @@ else:
     Trang này hiển thị các số liệu hiệu suất và đồ thị quá trình huấn luyện để đánh giá mức độ hiệu quả của mô hình ALPR.
     """)
 
-    # --- Metrics (Số liệu hiện có) ---
     st.subheader("1. Chỉ số đo lường hiệu năng tổng thể")
     m1, m2, m3, m4 = st.columns(4)
     with m1:
@@ -163,7 +166,6 @@ else:
 
     st.divider()
 
-    # --- Đồ thị quá trình huấn luyện (Tích hợp ảnh mới) ---
     st.subheader("2. Đồ thị quá trình huấn luyện mô hình (Training Curves)")
     st.markdown("""
     Các đồ thị dưới đây cho thấy sự tiến triển của `Loss` và `Accuracy` theo từng Kỷ nguyên (Epoch).
@@ -173,19 +175,25 @@ else:
     col_graph_loss, col_graph_acc = st.columns(2)
     
     with col_graph_loss:
-        st.image("image_0.png", caption="Đồ thị Mất mát khi huấn luyện và kiểm tra", use_container_width=True)
+        try:
+            st.image("loss.png", caption="Đồ thị Mất mát khi huấn luyện và kiểm tra", use_container_width=True)
+        except:
+            st.warning("⚠️ Thiếu file `images/image_0.png`")
+            
         st.markdown("""
         **🔍 Phân tích Đồ thị Loss:**
-        
         * `Train Loss` (xanh dương) giảm dần, cho thấy mô hình đang học tốt trên dữ liệu huấn luyện.
-        * `Validation Loss` (cam) ban đầu giảm, sau đó không ổn định và bắt đầu tăng trở lại ở những kỷ nguyên cuối (sau Epoch 15). Đây là một dấu hiệu rõ ràng của **overfitting**. Mô hình học vẹt dữ liệu huấn luyện thay vì khái quát hóa dữ liệu mới.
+        * `Validation Loss` (cam) ban đầu giảm, sau đó không ổn định và bắt đầu tăng trở lại ở những kỷ nguyên cuối (sau Epoch 15). Đây là một dấu hiệu rõ ràng của **overfitting**.
         """)
 
     with col_graph_acc:
-        st.image("image_1.png", caption="Đồ thị Độ chính xác khi huấn luyện và kiểm tra", use_container_width=True)
+        try:
+            st.image("train.png", caption="Đồ thị Độ chính xác khi huấn luyện và kiểm tra", use_container_width=True)
+        except:
+            st.warning("⚠️ Thiếu file `images/image_1.png`")
+            
         st.markdown("""
         **🔍 Phân tích Đồ thị Accuracy:**
-        
         * `Train Accuracy` (xanh dương) tăng dần và ổn định ở mức rất cao.
         * `Validation Accuracy` (cam) tăng ban đầu, sau đó cũng không ổn định và bắt đầu giảm nhẹ ở những kỷ nguyên cuối. Điều này củng cố cho nhận định về overfitting từ đồ thị Loss.
         """)
