@@ -95,7 +95,7 @@ elif page == "2. Triển khai mô hình":
     
     try:
         # LƯU Ý: Bạn nhớ kiểm tra lại tên file chính xác trên Github là demo.png hay demo.jpg nhé
-        st.image("images/demo.png", caption="Trái: Ảnh gốc đầu vào | Phải: Kết quả YOLOv8 nhận diện (59-M1 902.08)", use_container_width=True)
+        st.image("demo.png", caption="Trái: Ảnh gốc đầu vào | Phải: Kết quả YOLOv8 nhận diện (59-M1 902.08)", use_container_width=True)
     except Exception as e:
         st.warning(f"⚠️ Chưa hiển thị được ảnh Demo do sai đường dẫn. Vui lòng kiểm tra lại file `images/demo.png` trên thư mục Github của bạn.")
 
