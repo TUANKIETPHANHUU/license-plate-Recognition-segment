@@ -15,14 +15,12 @@ st.set_page_config(
 )
 
 # --- Khởi tạo và Cache mô hình ---
-# HÀM NÀY BỊ THIẾU TRONG CODE CỦA BẠN - MÌNH ĐÃ THÊM LẠI
 @st.cache_resource
 def load_model():
     try:
         from src.lp_recognition import E2E
         return E2E()
     except Exception as e:
-        # Nếu không có model thật, trả về None để chạy chế độ Demo (Mockup)
         return None
 
 # --- Giao diện Sidebar ---
@@ -85,19 +83,18 @@ if page == "1. Giới thiệu & Khám phá dữ liệu (EDA)":
 # ---------------------------------------------------------
 elif page == "2. Triển khai mô hình":
     st.title("🚀 Hệ thống nhận diện thực tế")
-    st.markdown("""
-    Trang này cho phép bạn tải lên một hình ảnh xe và xem kết quả nhận dạng biển số xe trong thời gian thực.
-    """)
+    st.markdown("Trang này cho phép bạn tải lên một hình ảnh xe và xem kết quả nhận dạng biển số xe trong thời gian thực.")
     
     # --- 1. PHẦN VÍ DỤ MINH HỌA ---
     st.subheader("🖼️ Ví dụ minh họa hoạt động")
-    st.markdown("*Dưới đây là một ví dụ về cách hệ thống phát hiện biển số, vẽ khung bao và đọc chuỗi ký tự:*")
+    st.markdown("*Dưới đây là các ví dụ về cách hệ thống phát hiện biển số, vẽ khung bao và đọc chuỗi ký tự:*")
     
-    try:
-        # LƯU Ý: Bạn nhớ kiểm tra lại tên file chính xác trên Github là demo.png hay demo.jpg nhé
-        st.image("demo.png", caption="Trái: Ảnh gốc đầu vào | Phải: Kết quả YOLOv8 nhận diện (59-M1 902.08)", use_container_width=True)
-    except Exception as e:
-        st.warning(f"⚠️ Chưa hiển thị được ảnh Demo do sai đường dẫn. Vui lòng kiểm tra lại file `images/demo.png` trên thư mục Github của bạn.")
+    col_demo1, col_demo2 = st.columns(2)
+    with col_demo1:
+        try:
+            st.image("demo.png", caption="Ví dụ 1: Nhận diện biển số 59-M1 902.08", use_container_width=True)
+        except Exception:
+            st.warning("⚠️ Không tìm thấy file `Screenshot 2026-04-05 141743.jpg`")
 
     st.divider()
 
@@ -105,9 +102,7 @@ elif page == "2. Triển khai mô hình":
     st.subheader("🔍 Trải nghiệm hệ thống")
     st.markdown("*Tải lên hình ảnh phương tiện của bạn bên dưới để thực hiện nhận diện:*")
     
-    # Load model an toàn
     model = load_model()
-    
     uploaded_file = st.file_uploader("Tải lên hình ảnh xe (JPG/PNG)...", type=["jpg", "png", "jpeg"])
 
     if uploaded_file is not None:
@@ -124,84 +119,81 @@ elif page == "2. Triển khai mô hình":
                     start_time = time.time()
                     
                     if model is not None:
-                        # --- Chạy mô hình thật ---
-                        result_img = model.predict(img)
-                        predicted_text = "Kết quả thực từ mô hình" 
-                        confidence = 0.92 
-                    else:
-                        # --- Chạy mô phỏng (Mockup) ---
-                        time.sleep(1.5)
-                        result_img = img.copy()
-                        cv2.rectangle(result_img, (50, 50), (250, 150), (255, 0, 255), 2)
-                        cv2.putText(result_img, "59-M1 902.08", (50, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-                        predicted_text = "59-M1 902.08 (MOCKUP)"
-                        confidence = 0.985
+                        try:
+                            # --- CHẠY MÔ HÌNH THẬT ---
+                            # Lưu ý: Tuỳ thuộc vào hàm predict() trong class E2E của bạn trả về những gì,
+                            # bạn cần điều chỉnh lại các biến số bên dưới cho khớp. 
+                            # (Ví dụ: result_img, predicted_text, confidence = model.predict(img))
+                            
+                            result_img = model.predict(img) 
+                            
+                            # Tạm thời gán placeholder nếu hàm predict của bạn chỉ trả về ảnh
+                            predicted_text = "Đang lấy dữ liệu từ model..." 
+                            confidence = 0.95 
 
-                    process_time = time.time() - start_time
-                    
-                    st.image(result_img, channels="BGR", caption="Kết quả xử lý", use_container_width=True)
-                    st.success(f"**Chuỗi biển số:** `{predicted_text}`")
-                    st.info(f"**Độ tin cậy (Confidence):** {confidence*100:.1f}%")
-                    st.caption(f"⏱️ Thời gian trích xuất: {process_time:.3f} giây")
+                            process_time = time.time() - start_time
+                            
+                            st.image(result_img, channels="BGR", caption="Kết quả xử lý", use_container_width=True)
+                            st.success(f"**Chuỗi biển số:** `{predicted_text}`")
+                            st.info(f"**Độ tin cậy (Confidence):** {confidence*100:.1f}%")
+                            st.caption(f"⏱️ Thời gian trích xuất: {process_time:.3f} giây")
+                            
+                        except Exception as e:
+                            st.error(f"❌ Xảy ra lỗi trong quá trình nhận diện của mô hình: {e}")
+                    else:
+                        st.error("❌ Hệ thống không tìm thấy hoặc không tải được mô hình nhận diện (Class E2E). Vui lòng kiểm tra lại source code mô hình!")
 
 # ---------------------------------------------------------
 # TRANG 3: ĐÁNH GIÁ & HIỆU NĂNG
 # ---------------------------------------------------------
 else:
     st.title("📊 Đánh giá & Hiệu năng hệ thống")
-    st.markdown("""
-    Trang này hiển thị các số liệu hiệu suất và đồ thị quá trình huấn luyện để đánh giá mức độ hiệu quả của mô hình ALPR.
-    """)
+    st.markdown("Trang này hiển thị các số liệu hiệu suất và đồ thị quá trình huấn luyện để đánh giá mức độ hiệu quả của mô hình ALPR.")
 
     st.subheader("1. Chỉ số đo lường hiệu năng tổng thể")
     m1, m2, m3, m4 = st.columns(4)
     with m1:
-        st.metric("IoU Trung bình (Detection)", "0.85", help="Intersection over Union - Đo lường độ chính xác của khung bao.")
+        st.metric("IoU Trung bình (Detection)", "0.85", help="Intersection over Union")
     with m2:
-        st.metric("mAP@0.5 (Overall)", "92.1%", help="Mean Average Precision - Đo lường độ chính xác tổng thể.")
+        st.metric("mAP@0.5 (Overall)", "92.1%", help="Mean Average Precision")
     with m3:
-        st.metric("Character Accuracy (Recognition)", "95.8%", help="Độ chính xác của việc nhận dạng từng ký tự.")
+        st.metric("Character Accuracy (Recognition)", "95.8%", help="Độ chính xác từng ký tự")
     with m4:
-        st.metric("CER (Tỷ lệ lỗi ký tự)", "0.04", help="Character Error Rate - Tỷ lệ lỗi trên mỗi ký tự, càng thấp càng tốt.")
+        st.metric("CER (Tỷ lệ lỗi ký tự)", "0.04", help="Character Error Rate")
 
     st.divider()
 
     st.subheader("2. Đồ thị quá trình huấn luyện mô hình (Training Curves)")
-    st.markdown("""
-    Các đồ thị dưới đây cho thấy sự tiến triển của `Loss` và `Accuracy` theo từng Kỷ nguyên (Epoch).
-    Việc quan sát các đồ thị này rất quan trọng để xác định xem mô hình có bị overfitting (học vẹt) hay không.
-    """)
-
     col_graph_loss, col_graph_acc = st.columns(2)
     
     with col_graph_loss:
         try:
-            st.image("loss.png", caption="Đồ thị Mất mát khi huấn luyện và kiểm tra", use_container_width=True)
-        except:
-            st.warning("⚠️ Thiếu file `images/image_0.png`")
+            st.image("loss.png", caption="Đồ thị Training and Validation Loss", use_container_width=True)
+        except Exception:
+            st.warning("⚠️ Không tìm thấy file `Screenshot 2026-04-05 135111.png`")
             
         st.markdown("""
         **🔍 Phân tích Đồ thị Loss:**
-        * `Train Loss` (xanh dương) giảm dần, cho thấy mô hình đang học tốt trên dữ liệu huấn luyện.
-        * `Validation Loss` (cam) ban đầu giảm, sau đó không ổn định và bắt đầu tăng trở lại ở những kỷ nguyên cuối (sau Epoch 15). Đây là một dấu hiệu rõ ràng của **overfitting**.
+        * `Train Loss` (xanh dương) giảm dần, cho thấy mô hình đang học tốt.
+        * `Validation Loss` (cam) bắt đầu tăng trở lại ở những kỷ nguyên cuối (sau Epoch 15). Đây là dấu hiệu của **overfitting**.
         """)
 
     with col_graph_acc:
         try:
-            st.image("train.png", caption="Đồ thị Độ chính xác khi huấn luyện và kiểm tra", use_container_width=True)
-        except:
-            st.warning("⚠️ Thiếu file `images/image_1.png`")
+            st.image("train.png", caption="Đồ thị Training and Validation Accuracy", use_container_width=True)
+        except Exception:
+            st.warning("⚠️ Không tìm thấy file `Screenshot 2026-04-05 135115.png`")
             
         st.markdown("""
         **🔍 Phân tích Đồ thị Accuracy:**
         * `Train Accuracy` (xanh dương) tăng dần và ổn định ở mức rất cao.
-        * `Validation Accuracy` (cam) tăng ban đầu, sau đó cũng không ổn định và bắt đầu giảm nhẹ ở những kỷ nguyên cuối. Điều này củng cố cho nhận định về overfitting từ đồ thị Loss.
+        * `Validation Accuracy` (cam) dao động và có xu hướng giảm nhẹ về cuối, củng cố thêm nhận định về overfitting.
         """)
 
     st.success("""
     **✅ Kết luận và hướng cải thiện:**
-    Mặc dù mô hình đạt được độ chính xác cao trên tập huấn luyện, nhưng hiện tượng overfitting cho thấy mô hình chưa khái quát hóa tốt. Hướng cải thiện tiếp theo bao gồm:
-    1.  Tăng cường dữ liệu (Data Augmentation) đa dạng hơn.
-    2.  Sử dụng Early Stopping để dừng huấn luyện khi `Validation Loss` bắt đầu tăng.
-    3.  Thêm kỹ thuật Regularization (ví dụ: Dropout) vào kiến trúc mô hình.
+    Mô hình có hiện tượng overfitting nhẹ. Hướng cải thiện tiếp theo:
+    1. Tăng cường dữ liệu (Data Augmentation).
+    2. Sử dụng Early Stopping.
+    3. Thêm Dropout vào kiến trúc mô hình.
     """)
