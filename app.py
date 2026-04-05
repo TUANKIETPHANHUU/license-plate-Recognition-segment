@@ -42,7 +42,7 @@ page = st.sidebar.radio(
 # TRANG 1: GIỚI THIỆU & EDA
 # ---------------------------------------------------------
 if page == "1. Giới thiệu & Khám phá dữ liệu (EDA)":
-    st.title("🛡️ BÁO CÁO ĐỒ ÁN - PHAN HỮU TUẤN KIỆT")
+    st.title("🛡️ BÁO CÁO ĐỒ ÁN  HỌC MÁY")
     st.info("""
     **Mô tả giá trị thực tiễn:** Giải pháp giúp tự động hóa quá trình ghi nhận phương tiện ra vào tại các trạm thu phí, bãi đỗ xe thông minh, khu chung cư. Qua đó giảm thiểu rủi ro sai sót do con người gây ra, tăng tốc độ xử lý và hỗ trợ trích xuất dữ liệu phục vụ công tác quản lý và đảm bảo an ninh khi cần thiết.
     """)
