@@ -211,3 +211,30 @@ else:
     * **Khả năng nhận dạng (CNN):** Hiệu năng xuất sắc với CER cực thấp (0.02), phản ánh khả năng trích xuất ký tự chính xác.
     * **Tốc độ:** Với **7.83 FPS**, hệ thống hoàn toàn đáp ứng được nhu cầu tại các bãi đỗ xe (Parking Lot) có lưu lượng xe ra vào trung bình.
     """)
+
+# --- PHẦN 4: PHÂN TÍCH SAI SỐ & HƯỚNG CẢI THIỆN ---
+    st.divider()
+    st.subheader("4. Phân tích sai số (Error Analysis)")
+    
+    err_col1, err_col2 = st.columns(2)
+    
+    with err_col1:
+        st.markdown("""
+        **🔍 Các trường hợp dự đoán sai tiêu biểu:**
+        * **Nhầm lẫn ký tự tương đồng:** Mô hình CNN đôi khi nhầm lẫn giữa các cặp ký tự có cấu trúc gần giống nhau như `0` và `D`, `8` và `B`, hoặc `5` và `S` khi biển số bị bẩn hoặc trầy xước.
+        * **Biển số bị nghiêng quá mức:** Khi góc chụp quá chéo, mặc dù YOLO vẫn phát hiện được (IoU giảm), nhưng bước căn chỉnh (Alignment) có thể không hoàn hảo, dẫn đến OCR đọc sai thứ tự.
+        * **Điều kiện ánh sáng cực đoan:** Trong môi trường quá chói (nắng gắt chiếu trực tiếp) hoặc quá tối, vùng bao biển số dễ bị nhiễu, làm giảm Precision của giai đoạn Detection.
+        """)
+
+    with err_col2:
+        st.markdown("""
+        **🛠️ Hướng cải thiện & Tối ưu:**
+        1.  **Cải thiện OCR:** Áp dụng thuật toán **STN (Spatial Transformer Network)** trước khi đưa vào CNN để tự động xoay/căn thẳng biển số bị nghiêng.
+        2.  **Xử lý hậu kỳ (Post-processing):** Sử dụng **Regular Expression (Regex)** dựa trên quy tắc biển số Việt Nam (ví dụ: 2 số - 1 chữ - 5 số) để tự động sửa lỗi các ký tự bị nhầm lẫn.
+        3.  **Tăng cường dữ liệu:** Bổ sung thêm các mẫu ảnh chụp ban đêm hoặc ảnh bị mờ chuyển động (motion blur) vào tập huấn luyện để tăng độ bền bỉ (Robustness) cho hệ thống.
+        """)
+
+    st.success(f"""
+    **✅ Tổng kết kết luận:**
+    Hệ thống đạt độ chính xác **98%** với tốc độ xử lý **7.83 FPS**, đáp ứng tốt yêu cầu tự động hóa bãi đỗ xe thông minh. Dù còn một số sai số nhỏ ở các trường hợp đặc biệt, nhưng hoàn toàn có thể khắc phục bằng các kỹ thuật xử lý ảnh nâng cao.
+    """)
