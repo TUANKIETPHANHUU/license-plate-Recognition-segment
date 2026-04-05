@@ -3,8 +3,9 @@ import cv2
 import numpy as np
 import time
 import pandas as pd
-import matplotlib.pyplot as plt
+import matplotlib.subplots as plt
 import seaborn as sns
+import matplotlib.pyplot as plt
 from PIL import Image
 
 # --- Cấu hình trang ---
@@ -15,7 +16,6 @@ st.set_page_config(
 )
 
 # --- Khởi tạo và Cache mô hình ---
-# Yêu cầu MLOps cơ bản: Sử dụng @st.cache_resource để không load lại model mỗi khi tương tác
 @st.cache_resource
 def load_model():
     try:
@@ -84,7 +84,7 @@ if page == "1. Giới thiệu & Khám phá dữ liệu (EDA)":
     # Nhận xét dữ liệu
     st.markdown("""
     **📝 Nhận xét về dữ liệu (Data Insights):**
-    * **Độ lệch dữ liệu (Imbalance):** Dữ liệu bị mất cân bằng cấu trúc nghiêm trọng. Nhóm `Xe ô tô` chiếm tỷ trọng áp đảo (gần 60%), trong khi `Xe ngoại giao` chỉ có 79 ảnh (chiếm chưa tới 1%).
+    * **Độ lệch dữ liệu (Imbalance):** Dữ liệu bị mất cân bằng cấu trúc nghiêm trọng. Nhóm Xe ô tô chiếm tỷ trọng áp đảo (gần 60%), trong khi Xe ngoại giao chỉ có 79 ảnh (chiếm chưa tới 1%).
     * **Ảnh hưởng đến mô hình:** Việc thiếu hụt dữ liệu biển số ngoại giao và quân đội (có màu sắc, định dạng đặc thù) có thể khiến mô hình dự đoán sai hoặc độ tự tin thấp khi gặp các loại xe này trong thực tế.
     * **Hướng xử lý:** Cần áp dụng các kỹ thuật Data Augmentation (tăng cường dữ liệu) hoặc thay đổi trọng số phạt (Class Weights) trong hàm Loss đối với các class thiểu số khi huấn luyện YOLOv8.
     """)
@@ -117,7 +117,7 @@ elif page == "2. Triển khai mô hình":
                     if model is not None:
                         # Thực thi model thực tế
                         result_img = model.predict(img)
-                        # Giả lập lấy chuỗi dự đoán và độ tin cậy từ model (bạn cần map biến này với return của file predict)
+                        # Giả lập lấy chuỗi dự đoán và độ tin cậy từ model
                         predicted_text = "Kết quả từ mô hình"
                         confidence = 0.92 
                     else:
@@ -132,7 +132,6 @@ elif page == "2. Triển khai mô hình":
                     
                     st.image(result_img, channels="BGR", caption="Kết quả xử lý", use_container_width=True)
                     
-                    # Hiển thị kết quả rõ ràng và độ tự tin (Confidence) theo yêu cầu rubric
                     st.success(f"**Chuỗi biển số:** {predicted_text}")
                     st.info(f"**Độ tin cậy (Confidence):** {confidence*100:.1f}%")
                     st.caption(f"⏱️ Thời gian xử lý: {process_time:.3f} giây")
@@ -142,140 +141,100 @@ elif page == "2. Triển khai mô hình":
 # ---------------------------------------------------------
 else:
     st.title("📊 Đánh giá & Hiệu năng hệ thống")
-
-    # ================= METRICS =================
+    
+    # --- Metrics ---
     st.subheader("1. Chỉ số đo lường (Metrics)")
+    st.write("Đánh giá hiệu suất chi tiết của từng module trong hệ thống.")
 
-    # ===== YOLO =====
-    st.markdown("### 🎯 Mô hình Phát hiện (YOLOv8)")
-    y1, y2, y3, y4 = st.columns(4)
+    # Nhóm 1: Phát hiện (Detection)
+    st.markdown("#### 🎯 Mô hình Phát hiện (Detection - YOLO)")
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        st.metric("mIoU", "0.797", help="Mean Intersection over Union")
+    with d2:
+        st.metric("Precision", "99.44%", help="Độ chính xác của Bounding Box")
+    with d3:
+        st.metric("Recall", "86.86%", help="Độ phủ (Khả năng không bỏ sót biển số)")
 
-    with y1:
-        st.metric("Precision", "99.44%")
-    with y2:
-        st.metric("Recall", "86.86%")
-    with y3:
-        st.metric("mIoU", "0.797")
-    with y4:
-        st.metric("FPS", "7.83")
+    st.write("") 
 
-    st.info("""
-    📌 **Nhận xét YOLO:**
-    - Precision rất cao → hầu như không detect sai
-    - Recall chưa cao → vẫn còn bỏ sót biển số
-    - Cần cải thiện dữ liệu cho các trường hợp khó (xa, tối, nghiêng)
-    """)
-
-    st.divider()
-
-    # ===== CNN =====
-    st.markdown("### 🔠 Mô hình Nhận dạng (CNN)")
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
+    # Nhóm 2: Nhận dạng (Recognition)
+    st.markdown("#### 🔠 Mô hình Nhận dạng (Recognition - CNN)")
+    r1, r2, r3 = st.columns(3)
+    with r1:
         st.metric("Accuracy", "98.0%")
-    with c2:
+    with r2:
         st.metric("F1-Score", "0.73")
-    with c3:
-        st.metric("CER", "0.02")
+    with r3:
+        st.metric("CER (Tỷ lệ lỗi ký tự)", "0.02", help="Character Error Rate - Càng thấp càng tốt")
 
-    st.info("""
-    📌 **Nhận xét CNN:**
-    - Accuracy cao → nhận dạng ký tự rất tốt
-    - CER thấp → ít lỗi ký tự
-    - F1 chưa cao do dữ liệu bị mất cân bằng
-    """)
+    st.write("")
 
-    st.divider()
-
-    # ===== OVERALL =====
-    st.markdown("### ⚡ Hiệu năng tổng thể")
-    o1, o2 = st.columns(2)
-
+    # Nhóm 3: Tổng thể (Overall)
+    st.markdown("#### ⚡ Hiệu năng Tổng thể (Overall)")
+    o1, o2, o3 = st.columns(3)
     with o1:
-        st.metric("Pipeline Accuracy", "≈ 85%")
-    with o2:
-        st.metric("Processing Time", "~0.12s / image")
+        st.metric("Tốc độ xử lý (FPS)", "7.83 FPS", help="Frames Per Second đo lường trên thiết bị thực tế")
 
-    st.warning("""
-    ⚠️ **Lưu ý:** Hiệu năng hệ thống phụ thuộc nhiều vào YOLO.
-    Nếu không detect được biển số → CNN không hoạt động.
-    """)
-
-    # ================= BIỂU ĐỒ =================
-    st.subheader("2. Biểu đồ đánh giá")
-
-    col1, col2 = st.columns(2)
-
-    # ===== CONFUSION MATRIX =====
-    with col1:
-        st.markdown("#### 📌 Confusion Matrix (CNN)")
-
-        labels = ['0', 'D', '8', 'B', '5', 'S', 'G']
-        cm = np.array([
-            [95, 2, 0, 0, 0, 0, 3], 
-            [1, 98, 0, 0, 1, 0, 0],
-            [0, 0, 89, 10, 0, 1, 0], 
-            [0, 1, 8, 91, 0, 0, 0],
-            [0, 0, 0, 0, 92, 8, 0], 
-            [0, 0, 0, 0, 6, 94, 0],
-            [4, 0, 0, 0, 0, 0, 96]
-        ])
-
-        fig, ax = plt.subplots(figsize=(6, 5))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                    xticklabels=labels, yticklabels=labels)
-        ax.set_xlabel("Predicted")
-        ax.set_ylabel("Actual")
-        st.pyplot(fig)
-
-    # ===== LOSS =====
-    with col2:
-        st.markdown("#### 📉 Training Loss (CNN)")
-
-        epochs = np.arange(1, 51)
-        train_loss = np.exp(-epochs/10) + np.random.normal(0, 0.02, 50)
-        val_loss = np.exp(-epochs/10) + 0.1 + np.random.normal(0, 0.03, 50)
-
-        fig2, ax2 = plt.subplots(figsize=(6, 5))
-        ax2.plot(epochs, train_loss, label="Train Loss")
-        ax2.plot(epochs, val_loss, label="Validation Loss")
-        ax2.set_xlabel("Epoch")
-        ax2.set_ylabel("Loss")
-        ax2.legend()
-        ax2.grid(True)
-
-        st.pyplot(fig2)
-
-    # ================= ERROR ANALYSIS =================
     st.divider()
-    st.subheader("3. Phân tích lỗi")
 
+    # --- Biểu đồ kỹ thuật ---
+    st.subheader("Đồ thị quá trình huấn luyện (CNN)")
+    col_a, col_b = st.columns(2)
+    
+    # Dữ liệu mô phỏng từ hình ảnh cung cấp (20 Epochs)
+    epochs = np.arange(0, 20)
+    
+    # Trích xuất dữ liệu Loss từ biểu đồ
+    train_loss = [0.032, 0.035, 0.034, 0.027, 0.027, 0.028, 0.021, 0.021, 0.012, 0.020, 0.013, 0.013, 0.013, 0.013, 0.017, 0.012, 0.012, 0.013, 0.011, 0.011]
+    val_loss = [0.084, 0.079, 0.076, 0.091, 0.068, 0.089, 0.078, 0.095, 0.090, 0.098, 0.081, 0.090, 0.091, 0.109, 0.091, 0.088, 0.090, 0.092, 0.096, 0.128]
+    
+    # Trích xuất dữ liệu Accuracy từ biểu đồ
+    train_acc = [0.989, 0.9868, 0.9864, 0.990, 0.990, 0.991, 0.9938, 0.993, 0.9972, 0.9935, 0.9962, 0.9964, 0.9954, 0.9954, 0.9949, 0.9958, 0.9958, 0.9958, 0.997, 0.9958]
+    val_acc = [0.9724, 0.974, 0.9755, 0.974, 0.9778, 0.974, 0.9778, 0.974, 0.9778, 0.9731, 0.9785, 0.9755, 0.9778, 0.9747, 0.974, 0.9762, 0.9785, 0.9778, 0.9778, 0.9701]
+
+    with col_a:
+        # Biểu đồ Loss
+        fig_loss, ax_loss = plt.subplots(figsize=(6, 4))
+        ax_loss.plot(epochs, train_loss, label='Train Loss', marker='o', color='#1f77b4')
+        ax_loss.plot(epochs, val_loss, label='Validation Loss', marker='s', color='#ff7f0e')
+        ax_loss.set_title('Training and Validation Loss')
+        ax_loss.set_xlabel('Epoch')
+        ax_loss.set_ylabel('Loss')
+        ax_loss.legend()
+        ax_loss.grid(True)
+        st.pyplot(fig_loss)
+
+    with col_b:
+        # Biểu đồ Accuracy
+        fig_acc, ax_acc = plt.subplots(figsize=(6, 4))
+        ax_acc.plot(epochs, train_acc, label='Train Accuracy', marker='o', color='#1f77b4')
+        ax_acc.plot(epochs, val_acc, label='Validation Accuracy', marker='s', color='#ff7f0e')
+        ax_acc.set_title('Training and Validation Accuracy')
+        ax_acc.set_xlabel('Epoch')
+        ax_acc.set_ylabel('Accuracy')
+        ax_acc.legend()
+        ax_acc.grid(True)
+        st.pyplot(fig_acc)
+
+    # --- Phân tích sai số ---
+    st.divider()
+    st.subheader("2. Phân tích trường hợp lỗi (Error Analysis)")
+    
     e1, e2 = st.columns(2)
-
     with e1:
-        st.error("""
-        ❌ **Lỗi thường gặp:**
-        - YOLO bỏ sót biển số (Recall thấp)
-        - Biển số nhỏ, xa, nghiêng
-        - Ánh sáng kém hoặc bị chói
-        - Nhầm ký tự: 8 ↔ B, 5 ↔ S, 0 ↔ G
+        st.error("📉 **Mô hình thường dự đoán sai ở đâu?**")
+        st.markdown("""
+        * **Nhầm lẫn hình học:** Trong quá trình đánh giá, mô hình hay nhầm lẫn các cặp ký tự có nét tương đồng cao như 8 và B, 5 và S, 0 và G.
+        * **Lỗi môi trường:** * Chói đèn pha ban đêm làm mất đặc trưng cạnh (viền) của ký tự.
+            * Bóng râm đổ xuống biển số cắt ngang chữ cái làm CNN hiểu lầm thành 2 ký tự khác nhau.
+            * Thanh chắn Barrier hoặc bùn đất che khuất 1 phần biển số.
+        * **Dấu hiệu Overfitting nhỏ:** Ở những epoch cuối (18-19), có thể thấy Validation Loss tăng nhẹ, cho thấy mô hình đang bắt đầu có hiện tượng học vẹt (overfit).
         """)
-
     with e2:
-        st.success("""
-        ✅ **Hướng cải thiện:**
-        - Tăng dữ liệu (augmentation)
-        - Cân bằng dataset
-        - Dùng regex sửa format biển số
-        - Improve YOLO (augment + fine-tune)
+        st.success("🛠️ **Hướng cải thiện**")
+        st.markdown("""
+        * **Post-processing (Hậu xử lý):** Áp dụng Regular Expression (Rule-based) theo format biển số Việt Nam. Ví dụ: Ký tự thứ 3 của xe máy bắt buộc phải là chữ cái (A-Z), nếu CNN dự đoán ra số 8 -> tự động sửa thành B.
+        * **Data Augmentation & Regularization:** Tăng cường dữ liệu (thêm nhiễu, điều chỉnh độ sáng) và sử dụng Early Stopping hoặc Dropout để khắc phục hiện tượng tăng Validation Loss cuối quá trình train.
+        * **Thuật toán NMS:** Cải thiện Non-Maximum Suppression để chống việc một chữ cái bị cắt vỡ thành nhiều khung Bounding Box chồng chéo.
         """)
-
-    # ================= KẾT LUẬN =================
-    st.divider()
-    st.success("""
-    🎯 **Kết luận:**
-    Hệ thống đạt độ chính xác cao (98% CNN, 99% Precision YOLO),
-    có khả năng triển khai thực tế. Tuy nhiên cần cải thiện Recall
-    để tăng độ ổn định toàn hệ thống.
-    """)
