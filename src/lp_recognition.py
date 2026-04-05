@@ -3,7 +3,6 @@ import numpy as np
 from skimage import measure
 from imutils import perspective
 import imutils
-
 from src.data_utils import order_points, convert2Square, draw_labels_and_boxes
 from src.lp_detection.detect import detectNumberPlate
 from src.char_classification.model import CNN_Model
@@ -32,78 +31,60 @@ class E2E(object):
     def extractLP(self):
         coordinates = self.detectLP.detect(self.image)
         if len(coordinates) == 0:
-            ValueError('No images detected')
-
+            return [] # Trả về list trống thay vì raise lỗi để app không bị crash
         for coordinate in coordinates:
             yield coordinate
 
     def predict(self, image):
-        # Input image or frame
         self.image = image
-
-        for coordinate in self.extractLP():     # detect license plate by yolov3
+        for coordinate in self.extractLP():
             self.candidates = []
-
-            # convert (x_min, y_min, width, height) to coordinate(top left, top right, bottom left, bottom right)
             pts = order_points(coordinate)
-
-            # crop number plate used by bird's eyes view transformation
             LpRegion = perspective.four_point_transform(self.image, pts)
-           
-            # segmentation
+            
+            # Thực hiện cắt ký tự
             self.segmentation(LpRegion)
 
-            # recognize characters
-            self.recognizeChar()
-
-            # format and display license plate
-            license_plate = self.format()
-
-            # draw labels
-            self.image = draw_labels_and_boxes(self.image, license_plate, coordinate)
+            # Nhận dạng ký tự nếu có ứng viên
+            if len(self.candidates) > 0:
+                self.recognizeChar()
+                license_plate = self.format()
+                self.image = draw_labels_and_boxes(self.image, license_plate, coordinate)
 
         return self.image
 
     def segmentation(self, LpRegion):
-        # apply thresh to extracted licences plate
         V = cv2.split(cv2.cvtColor(LpRegion, cv2.COLOR_BGR2HSV))[2]
-
-        # adaptive threshold
         T = threshold_local(V, 15, offset=10, method="gaussian")
         thresh = (V > T).astype("uint8") * 255
-
-        # convert black pixel of digits to white pixel
         thresh = cv2.bitwise_not(thresh)
         thresh = imutils.resize(thresh, width=400)
         thresh = cv2.medianBlur(thresh, 5)
 
-        # connected components analysis
         labels = measure.label(thresh, connectivity=2, background=0)
 
-        # loop over the unique components
         for label in np.unique(labels):
-            # if this is background label, ignore it
             if label == 0:
                 continue
 
-            # init mask to store the location of the character candidates
             mask = np.zeros(thresh.shape, dtype="uint8")
             mask[labels == label] = 255
 
-            # find contours from mask
-            _, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # --- SỬA LỖI TẠI ĐÂY ---
+            # OpenCV 4.x chỉ trả về 2 giá trị: contours và hierarchy
+            cnts = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours = cnts[0] if len(cnts) == 2 else cnts[1]
 
             if len(contours) > 0:
                 contour = max(contours, key=cv2.contourArea)
                 (x, y, w, h) = cv2.boundingRect(contour)
 
-                # rule to determine characters
                 aspectRatio = w / float(h)
                 solidity = cv2.contourArea(contour) / float(w * h)
                 heightRatio = h / float(LpRegion.shape[0])
 
+                # Điều kiện lọc ký tự (bạn có thể tinh chỉnh các thông số này)
                 if 0.1 < aspectRatio < 1.0 and solidity > 0.1 and 0.35 < heightRatio < 2.0:
-                    # extract characters
                     candidate = np.array(mask[y:y + h, x:x + w])
                     square_candidate = convert2Square(candidate)
                     square_candidate = cv2.resize(square_candidate, (28, 28), cv2.INTER_AREA)
@@ -119,35 +100,39 @@ class E2E(object):
             coordinates.append(coordinate)
 
         characters = np.array(characters)
-        result = self.recogChar.predict_on_batch(characters)
+        # Sử dụng predict để tương thích tốt hơn trên Streamlit Cloud
+        result = self.recogChar.predict(characters, verbose=0)
         result_idx = np.argmax(result, axis=1)
 
         self.candidates = []
         for i in range(len(result_idx)):
-            if result_idx[i] == 31:    # if is background or noise, ignore it
+            if result_idx[i] == 31: 
                 continue
             self.candidates.append((ALPHA_DICT[result_idx[i]], coordinates[i]))
 
     def format(self):
+        if not self.candidates:
+            return ""
+            
         first_line = []
         second_line = []
 
+        # Sắp xếp các ký tự theo tọa độ Y để phân dòng
+        self.candidates.sort(key=lambda x: x[1][0])
+        
+        y_first_line = self.candidates[0][1][0]
         for candidate, coordinate in self.candidates:
-            if self.candidates[0][1][0] + 40 > coordinate[0]:
+            if coordinate[0] < y_first_line + 40: # Ngưỡng 40 pixel để phân dòng
                 first_line.append((candidate, coordinate[1]))
             else:
                 second_line.append((candidate, coordinate[1]))
 
-        def take_second(s):
-            return s[1]
+        # Sắp xếp theo tọa độ X để đọc từ trái sang phải
+        first_line.sort(key=lambda x: x[1])
+        second_line.sort(key=lambda x: x[1])
 
-        first_line = sorted(first_line, key=take_second)
-        second_line = sorted(second_line, key=take_second)
+        lp_str = "".join([str(ele[0]) for ele in first_line])
+        if second_line:
+            lp_str += "-" + "".join([str(ele[0]) for ele in second_line])
 
-        if len(second_line) == 0:  # if license plate has 1 line
-            license_plate = "".join([str(ele[0]) for ele in first_line])
-        else:   # if license plate has 2 lines
-            license_plate = "".join([str(ele[0]) for ele in first_line]) + "-" + "".join([str(ele[0]) for ele in second_line])
-
-        return license_plate
-		
+        return lp_str
